@@ -7,6 +7,11 @@ const upload = multer({ storage: multer.memoryStorage() });
 
 app.use(express.json());
 
+// Health check endpoint
+app.get('/health', (req, res) => {
+  res.status(200).json({ status: 'ok', service: 'ai-ocr', timestamp: new Date().toISOString() });
+});
+
 app.post('/ai/ocr', upload.single('image'), async (req, res) => {
   try {
     if (!req.file) {
@@ -40,5 +45,6 @@ app.post('/ai/ocr', upload.single('image'), async (req, res) => {
 const PORT = process.env.PORT || 3001;
 app.listen(PORT, () => {
   console.log(`AI/OCR service running on port ${PORT}`);
+  console.log(`Health check: http://localhost:${PORT}/health`);
+  console.log(`Environment: ${process.env.NODE_ENV || 'development'}`);
 });
-
