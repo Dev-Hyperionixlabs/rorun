@@ -1,0 +1,28 @@
+name: Deploy to Staging
+
+on:
+  push:
+    branches: [development]
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    name: Deploy to Staging
+    runs-on: ubuntu-latest
+    environment:
+      name: staging
+      url: https://staging-api.rorun.app
+    
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Deploy to staging
+        run: |
+          echo "🚀 Deploying to staging environment..."
+          # Add your staging deployment commands here
+          # Examples:
+          # - kubectl apply -f k8s/staging/
+          # - terraform apply -var-file=staging.tfvars
+          # - render deploy
+          # - vercel --prod
+
