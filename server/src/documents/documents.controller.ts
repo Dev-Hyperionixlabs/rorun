@@ -1,0 +1,86 @@
+import {
+  Controller,
+  Get,
+  Post,
+  Put,
+  Delete,
+  Body,
+  Param,
+  Query,
+  UseGuards,
+  Request,
+} from '@nestjs/common';
+import { ApiTags, ApiOperation, ApiBearerAuth, ApiParam, ApiQuery } from '@nestjs/swagger';
+import { DocumentsService } from './documents.service';
+import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
+import { CreateDocumentDto, UpdateDocumentDto } from './dto/document.dto';
+
+@ApiTags('documents')
+@Controller('businesses/:businessId/documents')
+@UseGuards(JwtAuthGuard)
+@ApiBearerAuth()
+export class DocumentsController {
+  constructor(private readonly documentsService: DocumentsService) {}
+
+  @Post('upload-url')
+  @ApiOperation({ summary: 'Get signed URL for document upload' })
+  async getUploadUrl(
+    @Param('businessId') businessId: string,
+    @Request() req,
+    @Body() body: { filename: string; mimeType: string },
+  ) {
+    return this.documentsService.createUploadUrl(
+      businessId,
+      req.user.id,
+      body.filename,
+      body.mimeType,
+    );
+  }
+
+  @Post()
+  @ApiOperation({ summary: 'Register uploaded document' })
+  async create(
+    @Param('businessId') businessId: string,
+    @Request() req,
+    @Body() dto: CreateDocumentDto,
+  ) {
+    return this.documentsService.create(businessId, req.user.id, dto);
+  }
+
+  @Get()
+  @ApiQuery({ name: 'transactionId', required: false })
+  @ApiOperation({ summary: 'Get all documents for a business' })
+  async findAll(
+    @Param('businessId') businessId: string,
+    @Request() req,
+    @Query('transactionId') transactionId?: string,
+  ) {
+    return this.documentsService.findAll(businessId, req.user.id, transactionId);
+  }
+
+  @Get(':id')
+  @ApiParam({ name: 'id', description: 'Document ID' })
+  @ApiOperation({ summary: 'Get document by ID' })
+  async findOne(@Param('id') id: string, @Request() req) {
+    return this.documentsService.findOne(id, req.user.id);
+  }
+
+  @Put(':id')
+  @ApiParam({ name: 'id', description: 'Document ID' })
+  @ApiOperation({ summary: 'Update document (e.g., link to transaction)' })
+  async update(
+    @Param('id') id: string,
+    @Request() req,
+    @Body() dto: UpdateDocumentDto,
+  ) {
+    return this.documentsService.update(id, req.user.id, dto);
+  }
+
+  @Delete(':id')
+  @ApiParam({ name: 'id', description: 'Document ID' })
+  @ApiOperation({ summary: 'Delete document' })
+  async remove(@Param('id') id: string, @Request() req) {
+    return this.documentsService.remove(id, req.user.id);
+  }
+}
+

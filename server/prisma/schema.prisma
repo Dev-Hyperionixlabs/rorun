@@ -1,0 +1,348 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id            String   @id @default(uuid())
+  phone         String   @unique
+  email         String?  @unique
+  name          String?
+  languagePref  String   @default("en")
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  businesses    Business[]
+  subscriptions Subscription[]
+  devices       Device[]
+  auditLogs     AuditLog[] @relation("ActorUser")
+
+  @@map("users")
+}
+
+model Business {
+  id                    String   @id @default(uuid())
+  ownerUserId           String
+  name                  String
+  legalForm             String
+  sector                String?
+  state                 String?
+  cacNumber             String?
+  tin                   String?
+  vatRegistered         Boolean  @default(false)
+  estimatedTurnoverBand String?
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+
+  owner                 User            @relation(fields: [ownerUserId], references: [id], onDelete: Cascade)
+  taxProfiles           TaxProfile[]
+  transactions          Transaction[]
+  documents             Document[]
+  obligations           Obligation[]
+  alerts                Alert[]
+  subscriptions         Subscription[]
+  invoices              Invoice[]
+  importBatches         ImportBatch[]
+
+  @@map("businesses")
+}
+
+model TaxProfile {
+  id                 String   @id @default(uuid())
+  businessId         String
+  taxYear            Int
+  citStatus          String
+  vatStatus          String
+  whtStatus          String
+  eligibilityDetailJson Json?
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  business           Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+
+  @@unique([businessId, taxYear])
+  @@map("tax_profiles")
+}
+
+model TaxRule {
+  id                String   @id @default(uuid())
+  taxType           String
+  year              Int
+  thresholdMin      Decimal? @db.Decimal(15, 2)
+  thresholdMax      Decimal? @db.Decimal(15, 2)
+  conditionExpression String?
+  resultJson        Json
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  @@unique([taxType, year, thresholdMin, thresholdMax])
+  @@map("tax_rules")
+}
+
+model TransactionCategory {
+  id          String   @id @default(uuid())
+  name        String
+  type        String   // income or expense
+  displayOrder Int     @default(0)
+  createdAt   DateTime @default(now())
+
+  transactions Transaction[]
+  aiSuggestions Transaction[] @relation("AICategory")
+
+  @@map("transaction_categories")
+}
+
+model Transaction {
+  id              String   @id @default(uuid())
+  businessId      String
+  type            String   // income or expense
+  amount          Decimal  @db.Decimal(15, 2)
+  currency        String   @default("NGN")
+  date            DateTime
+  description     String?
+  source          String   @default("manual") // manual, upload, import
+  categoryId      String?
+  aiCategoryId    String?
+  aiConfidence    Decimal? @db.Decimal(5, 4)
+  isBusinessFlag  Boolean  @default(true)
+  invoiceId       String?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  business        Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  category        TransactionCategory? @relation(fields: [categoryId], references: [id])
+  aiCategory      TransactionCategory? @relation("AICategory", fields: [aiCategoryId], references: [id])
+  documents       Document[]
+  invoice         Invoice? @relation(fields: [invoiceId], references: [id])
+
+  @@index([businessId, date])
+  @@index([businessId, type])
+  @@index([businessId, categoryId])
+  @@map("transactions")
+}
+
+model Document {
+  id                    String   @id @default(uuid())
+  businessId            String
+  relatedTransactionId  String?
+  type                  String   // receipt, bank_statement, other
+  storageUrl            String
+  mimeType              String
+  size                  Int
+  ocrStatus             String   @default("pending") // pending, success, failed
+  extractedMetadataJson Json?
+  createdAt             DateTime @default(now())
+
+  business              Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  transaction           Transaction? @relation(fields: [relatedTransactionId], references: [id], onDelete: SetNull)
+  importBatch           ImportBatch?
+
+  @@map("documents")
+}
+
+model Obligation {
+  id          String   @id @default(uuid())
+  businessId  String
+  taxType     String   // CIT, VAT, WHT
+  periodStart DateTime
+  periodEnd   DateTime
+  dueDate     DateTime
+  status      String   @default("upcoming") // upcoming, due, overdue, fulfilled
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  business    Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  alerts      Alert[]
+
+  @@index([businessId, dueDate])
+  @@map("obligations")
+}
+
+model Alert {
+  id                String   @id @default(uuid())
+  businessId        String
+  type              String   // deadline_threshold, turnover_threshold, missing_receipt, etc.
+  messageKey        String
+  severity          String   @default("info") // info, warn, critical
+  linkedObligationId String?
+  payloadJson       Json?
+  createdAt         DateTime @default(now())
+  readAt            DateTime?
+
+  business          Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  obligation        Obligation? @relation(fields: [linkedObligationId], references: [id], onDelete: SetNull)
+
+  @@index([businessId, createdAt])
+  @@index([businessId, readAt])
+  @@map("alerts")
+}
+
+model KnowledgeArticle {
+  id            String   @id @default(uuid())
+  slug          String
+  language      String   // en, pidgin
+  title         String
+  contentMarkdown String @db.Text
+  tags          String[]
+  version       Int      @default(1)
+  publishedAt   DateTime?
+  isActive      Boolean  @default(true)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@unique([slug, language])
+  @@map("knowledge_articles")
+}
+
+model Device {
+  id        String   @id @default(uuid())
+  userId    String
+  platform  String   // android, ios
+  pushToken String?
+  lastSeenAt DateTime @default(now())
+  createdAt DateTime @default(now())
+
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("devices")
+}
+
+model AuditLog {
+  id            String   @id @default(uuid())
+  actorUserId   String?
+  resourceType  String
+  resourceId    String
+  action        String
+  beforeJson    Json?
+  afterJson     Json?
+  createdAt     DateTime @default(now())
+
+  actor         User?    @relation("ActorUser", fields: [actorUserId], references: [id], onDelete: SetNull)
+
+  @@index([resourceType, resourceId])
+  @@index([actorUserId])
+  @@map("audit_logs")
+}
+
+model Plan {
+  id          String   @id @default(uuid())
+  name        String
+  description String?
+  monthlyPrice Decimal  @db.Decimal(10, 2)
+  annualPrice Decimal? @db.Decimal(10, 2)
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  features    PlanFeature[]
+  subscriptions Subscription[]
+
+  @@map("plans")
+}
+
+model PlanFeature {
+  id         String   @id @default(uuid())
+  planId     String
+  featureKey String
+  limitValue Int?
+  createdAt  DateTime @default(now())
+
+  plan       Plan     @relation(fields: [planId], references: [id], onDelete: Cascade)
+
+  @@unique([planId, featureKey])
+  @@map("plan_features")
+}
+
+model Subscription {
+  id        String   @id @default(uuid())
+  userId    String
+  businessId String
+  planId    String
+  status    String   @default("active") // active, cancelled, expired
+  startedAt DateTime @default(now())
+  endsAt    DateTime?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  business  Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  plan      Plan     @relation(fields: [planId], references: [id])
+
+  @@index([userId, businessId])
+  @@map("subscriptions")
+}
+
+model Invoice {
+  id            String   @id @default(uuid())
+  businessId    String
+  invoiceNumber String
+  issueDate     DateTime
+  dueDate       DateTime?
+  customerName  String?
+  customerContact String?
+  status        String   @default("draft") // draft, sent, paid, cancelled
+  totalAmount   Decimal  @db.Decimal(15, 2)
+  currency      String   @default("NGN")
+  notes         String?  @db.Text
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  business      Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  items         InvoiceItem[]
+  transactions  Transaction[]
+
+  @@index([businessId, invoiceNumber])
+  @@map("invoices")
+}
+
+model InvoiceItem {
+  id          String   @id @default(uuid())
+  invoiceId   String
+  description String
+  quantity    Decimal  @db.Decimal(10, 2)
+  unitPrice   Decimal  @db.Decimal(15, 2)
+  amount      Decimal  @db.Decimal(15, 2)
+
+  invoice     Invoice  @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+
+  @@map("invoice_items")
+}
+
+model ImportBatch {
+  id        String   @id @default(uuid())
+  businessId String
+  documentId String?
+  status    String   @default("pending") // pending, processing, completed, failed
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  business  Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  document  Document? @relation(fields: [documentId], references: [id], onDelete: SetNull)
+  lines     ImportBatchLine[]
+
+  @@map("import_batches")
+}
+
+model ImportBatchLine {
+  id                  String   @id @default(uuid())
+  importBatchId       String
+  date                DateTime
+  description         String?
+  amount              Decimal  @db.Decimal(15, 2)
+  direction           String   // credit, debit
+  suggestedCategoryId String?
+  aiConfidence        Decimal? @db.Decimal(5, 4)
+  mappedTransactionId String?
+
+  importBatch         ImportBatch @relation(fields: [importBatchId], references: [id], onDelete: Cascade)
+
+  @@map("import_batch_lines")
+}
+
