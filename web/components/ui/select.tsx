@@ -9,23 +9,26 @@ export interface SelectOption {
   label: string;
 }
 
-interface SelectProps {
+export interface SelectProps {
   value?: string;
   onChange: (value: string) => void;
   options: SelectOption[];
   placeholder?: string;
+  disabled?: boolean;
 }
 
-export function Select({ value, onChange, options, placeholder }: SelectProps) {
+export function Select({ value, onChange, options, placeholder, disabled }: SelectProps) {
   return (
     <div className="relative">
       <select
         className={clsx(
           "block w-full h-10 appearance-none rounded-xl border border-slate-300 bg-white px-3 pr-10 text-sm text-slate-900",
-          "focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
+          "focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500",
+          disabled && "opacity-50 cursor-not-allowed bg-slate-100"
         )}
         value={value ?? ""}
         onChange={(e) => onChange(e.target.value)}
+        disabled={disabled}
       >
         {placeholder && (
           <option value="" disabled>
