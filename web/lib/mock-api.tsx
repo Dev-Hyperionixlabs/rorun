@@ -272,10 +272,14 @@ export const MockApiProvider: React.FC<{ children: React.ReactNode }> = ({
       async generateFilingPack(businessId, year) {
         const pack: FilingPack = {
           id: nanoid(),
-          year,
+          businessId,
+          taxYear: year,
           createdAt: new Date().toISOString(),
+          createdByUserId: state.user.id,
+          status: "ready",
           pdfUrl: "#",
-          csvUrl: "#"
+          csvUrl: "#",
+          metadataJson: null
         };
         setState((s) => {
           const summaries = s.yearSummaries.length

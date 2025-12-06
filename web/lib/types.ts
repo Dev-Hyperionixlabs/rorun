@@ -133,14 +133,6 @@ export interface YearSummary {
   packs: FilingPack[];
 }
 
-export interface FilingPack {
-  id: string;
-  year: number;
-  createdAt: string;
-  pdfUrl: string;
-  csvUrl: string;
-}
-
 export interface KnowledgeArticle {
   id: string;
   slug: string;
