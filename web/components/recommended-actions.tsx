@@ -95,7 +95,7 @@ export function RecommendedActionsSection() {
               ) : (
                 <Button
                   size="sm"
-                  variant="outline"
+                  variant="secondary"
                   className="rounded-full border-emerald-600 text-emerald-700 text-xs font-semibold"
                   onClick={() => router.push("/app/pricing")}
                 >

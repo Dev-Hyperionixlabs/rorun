@@ -1,10 +1,6 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  experimental: {
-    appDir: true
-  }
+  // App directory is enabled by default in Next.js 14
 };
 
 export default nextConfig;
-
-

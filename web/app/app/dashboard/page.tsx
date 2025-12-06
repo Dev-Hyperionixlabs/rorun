@@ -231,7 +231,7 @@ export default function DashboardPage() {
               </Button>
             ) : (
               <Button
-                variant="outline"
+                variant="secondary"
                 className="rounded-full border-emerald-600 text-sm font-semibold text-emerald-700"
                 onClick={() => (window.location.href = "/app/pricing")}
               >

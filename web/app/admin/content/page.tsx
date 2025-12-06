@@ -210,7 +210,7 @@ export default function ContentPage() {
                 <Save className="mr-1.5 h-4 w-4" />
                 Save
               </Button>
-              <Button size="sm" variant="outline" onClick={cancelEdit}>
+              <Button size="sm" variant="ghost" onClick={cancelEdit}>
                 <X className="mr-1.5 h-4 w-4" />
                 Cancel
               </Button>
@@ -250,7 +250,7 @@ export default function ContentPage() {
                       <Save className="mr-1.5 h-4 w-4" />
                       Save
                     </Button>
-                    <Button size="sm" variant="outline" onClick={cancelEdit}>
+                    <Button size="sm" variant="ghost" onClick={cancelEdit}>
                       <X className="mr-1.5 h-4 w-4" />
                       Cancel
                     </Button>

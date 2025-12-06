@@ -284,7 +284,7 @@ export default function WorkspaceDetailPage() {
           </CardTitle>
           <Button
             size="sm"
-            variant="outline"
+            variant="secondary"
             onClick={handleRegenerate}
             disabled={regenerating}
           >
@@ -353,7 +353,7 @@ export default function WorkspaceDetailPage() {
           </CardTitle>
         </CardHeader>
         <CardContent className="flex gap-3">
-          <Button variant="outline" onClick={handleImpersonate} disabled={impersonating}>
+          <Button variant="secondary" onClick={handleImpersonate} disabled={impersonating}>
             <UserCog className="mr-1.5 h-4 w-4" />
             {impersonating ? "Opening..." : "Impersonate User"}
           </Button>
