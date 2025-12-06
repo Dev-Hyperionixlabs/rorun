@@ -1,6 +1,6 @@
 import { getStoredAuthToken } from "../auth-token";
 
-const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL;
+const API_BASE = process.env.NEXT_PUBLIC_API_URL;
 const API_TOKEN = process.env.NEXT_PUBLIC_API_TOKEN;
 
 function authHeaders() {
@@ -10,13 +10,14 @@ function authHeaders() {
 
 export async function updateBusinessApi(businessId: string, data: Record<string, any>) {
   if (!API_BASE) return null;
+  const headers: HeadersInit = {
+    "Content-Type": "application/json",
+    ...authHeaders(),
+  };
   const res = await fetch(`${API_BASE}/businesses/${businessId}`, {
     method: "PUT",
     credentials: "include",
-    headers: {
-      "Content-Type": "application/json",
-      ...authHeaders(),
-    },
+    headers,
     body: JSON.stringify(data),
   });
   if (!res.ok) {
