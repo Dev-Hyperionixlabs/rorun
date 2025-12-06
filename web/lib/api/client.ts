@@ -1,7 +1,14 @@
-import { getStoredAuthToken } from "../auth-token";
+"use client";
 
-export const API_BASE = process.env.NEXT_PUBLIC_API_URL;
+import { getStoredAuthToken, clearAuthToken } from "../auth-token";
+
+// Single source of truth for API base URL
+export const API_BASE =
+  process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001";
 const API_TOKEN = process.env.NEXT_PUBLIC_API_TOKEN;
+
+// For historical helpers that relied on API_URL
+const API_URL = API_BASE;
 
 /**
  * Build authorization headers for authenticated API calls.
@@ -17,12 +24,6 @@ export function authHeaders(): Record<string, string> {
     Authorization: `Bearer ${bearer}`,
   };
 }
-
-"use client";
-
-import { getStoredAuthToken, clearAuthToken } from "../auth-token";
-
-const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001";
 
 export class ApiError extends Error {
   constructor(
