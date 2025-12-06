@@ -198,7 +198,7 @@ function ProfileSettingsSection() {
         <Field label="Preferred language">
           <Select
             value={language}
-            onChange={(v) => setLanguage(v)}
+            onChange={(v) => setLanguage(v as "en" | "pidgin")}
             options={[
               { value: "en", label: "English" },
               { value: "pidgin", label: "English + Pidgin" },
