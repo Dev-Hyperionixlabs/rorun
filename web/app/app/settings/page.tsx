@@ -1,7 +1,7 @@
 "use client";
 
 import { useSearchParams, useRouter } from "next/navigation";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, Suspense } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
@@ -23,6 +23,14 @@ const tabs = [
 ];
 
 export default function SettingsPage() {
+  return (
+    <Suspense fallback={<div className="text-sm text-slate-500">Loading settings…</div>}>
+      <SettingsContent />
+    </Suspense>
+  );
+}
+
+function SettingsContent() {
   const search = useSearchParams();
   const router = useRouter();
   const defaultTab = search.get("tab") || "plan";

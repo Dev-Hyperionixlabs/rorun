@@ -1,15 +1,23 @@
 "use client";
 
 import { useSearchParams } from "next/navigation";
+import { Suspense, useState } from "react";
 import { useMockApi } from "@/lib/mock-api";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { TaxSafetyCard } from "@/components/tax-safety-card";
 import { RecommendedActionsSection } from "@/components/recommended-actions";
 import { useFilingPack } from "@/hooks/use-filing-pack";
-import { useState } from "react";
 
 export default function DashboardPage() {
+  return (
+    <Suspense fallback={<div className="text-sm text-slate-500">Loading dashboard…</div>}>
+      <DashboardContent />
+    </Suspense>
+  );
+}
+
+function DashboardContent() {
   const searchParams = useSearchParams();
   const { businesses, transactions, alerts, currentPlanId } = useMockApi();
 
@@ -305,5 +313,3 @@ export default function DashboardPage() {
     </div>
   );
 }
-
-
