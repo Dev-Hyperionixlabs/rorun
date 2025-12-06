@@ -1,16 +1,8 @@
-import { getStoredAuthToken } from "../auth-token";
-
-const API_BASE = process.env.NEXT_PUBLIC_API_URL;
-const API_TOKEN = process.env.NEXT_PUBLIC_API_TOKEN;
-
-function authHeaders() {
-  const bearer = API_TOKEN || getStoredAuthToken();
-  return bearer ? { Authorization: `Bearer ${bearer}` } : {};
-}
+import { API_BASE, authHeaders } from "./client";
 
 export async function updateBusinessApi(businessId: string, data: Record<string, any>) {
   if (!API_BASE) return null;
-  const headers: HeadersInit = {
+  const headers: Record<string, string> = {
     "Content-Type": "application/json",
     ...authHeaders(),
   };

@@ -1,3 +1,23 @@
+import { getStoredAuthToken } from "../auth-token";
+
+export const API_BASE = process.env.NEXT_PUBLIC_API_URL;
+const API_TOKEN = process.env.NEXT_PUBLIC_API_TOKEN;
+
+/**
+ * Build authorization headers for authenticated API calls.
+ * Always returns a plain string map, which is compatible with HeadersInit.
+ */
+export function authHeaders(): Record<string, string> {
+  const bearer = API_TOKEN || getStoredAuthToken();
+  if (!bearer) {
+    return {};
+  }
+
+  return {
+    Authorization: `Bearer ${bearer}`,
+  };
+}
+
 "use client";
 
 import { getStoredAuthToken, clearAuthToken } from "../auth-token";

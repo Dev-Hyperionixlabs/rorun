@@ -1,13 +1,5 @@
-import { getStoredAuthToken } from "../auth-token";
 import { RecommendedAction } from "../types";
-
-const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL;
-const API_TOKEN = process.env.NEXT_PUBLIC_API_TOKEN;
-
-function getBearerToken(): string | null {
-  if (API_TOKEN) return API_TOKEN;
-  return getStoredAuthToken();
-}
+import { API_BASE, authHeaders } from "./client";
 
 export async function fetchRecommendedActions(
   businessId: string,
@@ -18,15 +10,9 @@ export async function fetchRecommendedActions(
   }
 
   const url = `${API_BASE}/businesses/${businessId}/recommended-actions?year=${year}`;
-  const headers: Record<string, string> = {};
-  const bearer = getBearerToken();
-  if (bearer) {
-    headers.Authorization = `Bearer ${bearer}`;
-  }
-
   const res = await fetch(url, {
     credentials: "include",
-    headers,
+    headers: authHeaders(),
   });
 
   if (!res.ok) {
