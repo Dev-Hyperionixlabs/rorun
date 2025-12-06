@@ -21,13 +21,8 @@ export class ObligationsController {
   @ApiParam({ name: 'id', description: 'Business ID' })
   @ApiQuery({ name: 'year', required: false, type: Number })
   @ApiOperation({ summary: 'Generate obligations for a tax year' })
-  async generate(
-    @Param('id') id: string,
-    @Request() req,
-    @Query('year') year?: number,
-  ) {
+  async generate(@Param('id') id: string, @Request() req, @Query('year') year?: number) {
     const taxYear = year || new Date().getFullYear();
     return this.obligationsService.generateObligations(id, req.user.id, taxYear);
   }
 }
-

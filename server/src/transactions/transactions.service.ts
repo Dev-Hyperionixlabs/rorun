@@ -1,7 +1,11 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { BusinessesService } from '../businesses/businesses.service';
-import { CreateTransactionDto, UpdateTransactionDto, TransactionQueryDto } from './dto/transaction.dto';
+import {
+  CreateTransactionDto,
+  UpdateTransactionDto,
+  TransactionQueryDto,
+} from './dto/transaction.dto';
 
 @Injectable()
 export class TransactionsService {
@@ -113,6 +117,7 @@ export class TransactionsService {
     }
 
     const { business, ...result } = transaction;
+    void business;
     return result;
   }
 
@@ -140,4 +145,3 @@ export class TransactionsService {
     });
   }
 }
-

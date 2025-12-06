@@ -30,10 +30,7 @@ export class SubscriptionsService {
         userId,
         businessId,
         status: 'active',
-        OR: [
-          { endsAt: null },
-          { endsAt: { gte: new Date() } },
-        ],
+        OR: [{ endsAt: null }, { endsAt: { gte: new Date() } }],
       },
       include: {
         plan: {
@@ -44,5 +41,35 @@ export class SubscriptionsService {
       },
     });
   }
-}
 
+  async setActiveSubscription(userId: string, businessId: string, planId: string) {
+    // mark existing active as ended
+    const now = new Date();
+    await this.prisma.subscription.updateMany({
+      where: {
+        userId,
+        businessId,
+        status: 'active',
+      },
+      data: {
+        status: 'ended',
+        endsAt: now,
+      },
+    });
+
+    const subscription = await this.prisma.subscription.create({
+      data: {
+        userId,
+        businessId,
+        planId,
+        status: 'active',
+        startedAt: now,
+      },
+      include: {
+        plan: true,
+      },
+    });
+
+    return { planId: subscription.planId, subscription };
+  }
+}

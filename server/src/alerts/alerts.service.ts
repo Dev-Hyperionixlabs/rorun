@@ -2,7 +2,6 @@ import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { BusinessesService } from '../businesses/businesses.service';
 import { NotificationService } from '../notification/notification.service';
-import { addDays, isBefore } from 'date-fns';
 
 @Injectable()
 export class AlertsService {
@@ -142,10 +141,7 @@ export class AlertsService {
     });
 
     for (const business of businesses) {
-      const totalIncome = business.transactions.reduce(
-        (sum, t) => sum + Number(t.amount),
-        0,
-      );
+      const totalIncome = business.transactions.reduce((sum, t) => sum + Number(t.amount), 0);
 
       // Example thresholds (would come from tax rules)
       const thresholds = {
@@ -158,17 +154,11 @@ export class AlertsService {
         const percentage = (totalIncome / threshold) * 100;
 
         if (percentage >= 70 && percentage < 90) {
-          await this.createAlert(
-            business.id,
-            'turnover_threshold',
-            'turnover_70_percent',
-            'warn',
-            {
-              currentIncome: totalIncome,
-              threshold,
-              percentage,
-            },
-          );
+          await this.createAlert(business.id, 'turnover_threshold', 'turnover_70_percent', 'warn', {
+            currentIncome: totalIncome,
+            threshold,
+            percentage,
+          });
         } else if (percentage >= 90) {
           await this.createAlert(
             business.id,
@@ -186,4 +176,3 @@ export class AlertsService {
     }
   }
 }
-

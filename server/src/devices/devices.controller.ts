@@ -24,4 +24,3 @@ export class DevicesController {
     return this.devicesService.remove(id, req.user.id);
   }
 }
-

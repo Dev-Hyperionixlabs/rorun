@@ -52,4 +52,3 @@ export class PlansService {
     return subscription.plan.features.some((f) => f.featureKey === featureKey);
   }
 }
-

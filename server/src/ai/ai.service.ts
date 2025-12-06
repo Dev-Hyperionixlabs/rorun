@@ -55,10 +55,7 @@ export class AiService {
 
       // If linked to transaction, update transaction with AI suggestions
       if (document.relatedTransactionId) {
-        await this.updateTransactionWithAiSuggestions(
-          document.relatedTransactionId,
-          extractedData,
-        );
+        await this.updateTransactionWithAiSuggestions(document.relatedTransactionId, extractedData);
       }
     } catch (error) {
       console.error(`Failed to process document ${documentId}:`, error);
@@ -107,4 +104,3 @@ export class AiService {
     }
   }
 }
-

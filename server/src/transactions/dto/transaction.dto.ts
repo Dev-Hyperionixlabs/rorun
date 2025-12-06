@@ -1,4 +1,13 @@
-import { IsString, IsNumber, IsDateString, IsOptional, IsBoolean, IsEnum, IsInt, Min } from 'class-validator';
+import {
+  IsString,
+  IsNumber,
+  IsDateString,
+  IsOptional,
+  IsBoolean,
+  IsEnum,
+  IsInt,
+  Min,
+} from 'class-validator';
 import { ApiProperty } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
 
@@ -115,4 +124,3 @@ export class TransactionQueryDto {
   @IsOptional()
   take?: number;
 }
-

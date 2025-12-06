@@ -1,13 +1,4 @@
-import {
-  Controller,
-  Get,
-  Post,
-  Put,
-  Body,
-  Param,
-  UseGuards,
-  Request,
-} from '@nestjs/common';
+import { Controller, Get, Post, Put, Body, Param, UseGuards, Request } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiBearerAuth, ApiParam } from '@nestjs/swagger';
 import { BusinessesService } from './businesses.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
@@ -42,12 +33,7 @@ export class BusinessesController {
   @Put(':id')
   @ApiParam({ name: 'id', description: 'Business ID' })
   @ApiOperation({ summary: 'Update business' })
-  async update(
-    @Param('id') id: string,
-    @Request() req,
-    @Body() dto: UpdateBusinessDto,
-  ) {
+  async update(@Param('id') id: string, @Request() req, @Body() dto: UpdateBusinessDto) {
     return this.businessesService.update(id, req.user.id, dto);
   }
 }
-

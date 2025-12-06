@@ -16,4 +16,3 @@ export class SubscriptionsController {
     return this.subscriptionsService.findUserSubscriptions(req.user.id);
   }
 }
-

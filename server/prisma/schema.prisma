@@ -23,6 +23,7 @@ model User {
   subscriptions Subscription[]
   devices       Device[]
   auditLogs     AuditLog[] @relation("ActorUser")
+  filingPacks   FilingPack[]
 
   @@map("users")
 }
@@ -50,6 +51,8 @@ model Business {
   subscriptions         Subscription[]
   invoices              Invoice[]
   importBatches         ImportBatch[]
+  filingPacks           FilingPack[]
+  notificationSetting   NotificationSetting?
 
   @@map("businesses")
 }
@@ -142,7 +145,7 @@ model Document {
 
   business              Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
   transaction           Transaction? @relation(fields: [relatedTransactionId], references: [id], onDelete: SetNull)
-  importBatch           ImportBatch?
+  importBatches         ImportBatch[]
 
   @@map("documents")
 }
@@ -182,6 +185,18 @@ model Alert {
   @@index([businessId, createdAt])
   @@index([businessId, readAt])
   @@map("alerts")
+}
+
+model NotificationSetting {
+  businessId        String   @id
+  deadlineDueSoon   Boolean  @default(true)
+  deadlineVerySoon  Boolean  @default(true)
+  monthlyReminder   Boolean  @default(true)
+  missingReceipts   Boolean  @default(true)
+
+  business          Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+
+  @@map("notification_settings")
 }
 
 model KnowledgeArticle {
@@ -245,6 +260,24 @@ model Plan {
   subscriptions Subscription[]
 
   @@map("plans")
+}
+
+model FilingPack {
+  id               String   @id @default(uuid())
+  businessId       String
+  taxYear          Int
+  createdAt        DateTime @default(now())
+  createdByUserId  String
+  status           String   @default("ready") // ready, failed
+  pdfUrl           String?
+  csvUrl           String?
+  metadataJson     Json?
+
+  business         Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  createdBy        User     @relation(fields: [createdByUserId], references: [id], onDelete: Restrict)
+
+  @@index([businessId, taxYear])
+  @@map("filing_packs")
 }
 
 model PlanFeature {
@@ -326,6 +359,8 @@ model ImportBatch {
   business  Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
   document  Document? @relation(fields: [documentId], references: [id], onDelete: SetNull)
   lines     ImportBatchLine[]
+
+  @@index([documentId])
 
   @@map("import_batches")
 }

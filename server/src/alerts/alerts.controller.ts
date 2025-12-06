@@ -26,11 +26,7 @@ export class AlertsController {
   @ApiParam({ name: 'id', description: 'Business ID' })
   @ApiParam({ name: 'alertId', description: 'Alert ID' })
   @ApiOperation({ summary: 'Mark alert as read' })
-  async markAsRead(
-    @Param('alertId') alertId: string,
-    @Request() req,
-  ) {
+  async markAsRead(@Param('alertId') alertId: string, @Request() req) {
     return this.alertsService.markAsRead(alertId, req.user.id);
   }
 }
-

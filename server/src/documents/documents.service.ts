@@ -92,14 +92,12 @@ export class DocumentsService {
     const viewUrl = await this.storageService.getSignedDownloadUrl(document.storageUrl);
 
     const { business, ...result } = document;
-    return {
-      ...result,
-      viewUrl,
-    };
+    void business;
+    return { ...result, viewUrl };
   }
 
   async update(id: string, userId: string, data: UpdateDocumentDto) {
-    const document = await this.findOne(id, userId);
+    await this.findOne(id, userId);
 
     return this.prisma.document.update({
       where: { id },
@@ -118,4 +116,3 @@ export class DocumentsService {
     });
   }
 }
-

@@ -68,11 +68,7 @@ export class DocumentsController {
   @Put(':id')
   @ApiParam({ name: 'id', description: 'Document ID' })
   @ApiOperation({ summary: 'Update document (e.g., link to transaction)' })
-  async update(
-    @Param('id') id: string,
-    @Request() req,
-    @Body() dto: UpdateDocumentDto,
-  ) {
+  async update(@Param('id') id: string, @Request() req, @Body() dto: UpdateDocumentDto) {
     return this.documentsService.update(id, req.user.id, dto);
   }
 
@@ -83,4 +79,3 @@ export class DocumentsController {
     return this.documentsService.remove(id, req.user.id);
   }
 }
-

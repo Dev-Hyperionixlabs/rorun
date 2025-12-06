@@ -83,7 +83,6 @@ export class EligibilityService {
     // Simplified CIT evaluation logic
     // In production, this would be more sophisticated
     const turnoverBand = business.estimatedTurnoverBand;
-    const legalForm = business.legalForm;
 
     // Example: Small companies (< 25M) may be exempt
     if (turnoverBand === 'micro' || turnoverBand === 'small') {
@@ -172,4 +171,3 @@ export class EligibilityService {
     return taxProfile;
   }
 }
-

@@ -1,13 +1,4 @@
-import {
-  Controller,
-  Get,
-  Post,
-  Put,
-  Body,
-  Param,
-  UseGuards,
-  Request,
-} from '@nestjs/common';
+import { Controller, Get, Post, Put, Body, Param, UseGuards, Request } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiBearerAuth, ApiParam } from '@nestjs/swagger';
 import { InvoicesService } from './invoices.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
@@ -46,12 +37,7 @@ export class InvoicesController {
   @Put(':id')
   @ApiParam({ name: 'id', description: 'Invoice ID' })
   @ApiOperation({ summary: 'Update invoice' })
-  async update(
-    @Param('id') id: string,
-    @Request() req,
-    @Body() dto: UpdateInvoiceDto,
-  ) {
+  async update(@Param('id') id: string, @Request() req, @Body() dto: UpdateInvoiceDto) {
     return this.invoicesService.update(id, req.user.id, dto);
   }
 }
-

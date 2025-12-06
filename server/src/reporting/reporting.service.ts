@@ -55,11 +55,14 @@ export class ReportingService {
     // Group expenses by category
     const expensesByCategory = transactions
       .filter((t) => t.type === 'expense')
-      .reduce((acc, t) => {
-        const categoryName = t.category?.name || 'Uncategorised';
-        acc[categoryName] = (acc[categoryName] || 0) + Number(t.amount);
-        return acc;
-      }, {} as Record<string, number>);
+      .reduce(
+        (acc, t) => {
+          const categoryName = t.category?.name || 'Uncategorised';
+          acc[categoryName] = (acc[categoryName] || 0) + Number(t.amount);
+          return acc;
+        },
+        {} as Record<string, number>,
+      );
 
     // Get documents count
     const documentsCount = await this.prisma.document.count({
@@ -119,7 +122,7 @@ export class ReportingService {
   private async generatePDF(summary: any): Promise<Buffer> {
     const pdfDoc = await PDFDocument.create();
     const page = pdfDoc.addPage([612, 792]); // US Letter size
-    const { width, height } = page.getSize();
+    const { height } = page.getSize();
 
     // Simple PDF generation (in production, use a template engine like Puppeteer)
     const font = await pdfDoc.embedFont('Helvetica');
@@ -186,4 +189,3 @@ export class ReportingService {
     return Buffer.from(csvContent, 'utf-8');
   }
 }
-

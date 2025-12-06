@@ -1,7 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import * as AWS from 'aws-sdk';
-import { v4 as uuidv4 } from 'uuid';
 
 @Injectable()
 export class StorageService {
@@ -35,7 +34,11 @@ export class StorageService {
     this.s3 = new AWS.S3(s3Config);
   }
 
-  async getSignedUploadUrl(key: string, contentType: string, expiresIn: number = 3600): Promise<string> {
+  async getSignedUploadUrl(
+    key: string,
+    contentType: string,
+    expiresIn: number = 3600,
+  ): Promise<string> {
     const params = {
       Bucket: this.bucket,
       Key: key,
@@ -57,21 +60,24 @@ export class StorageService {
   }
 
   async deleteFile(key: string): Promise<void> {
-    await this.s3.deleteObject({
-      Bucket: this.bucket,
-      Key: key,
-    }).promise();
+    await this.s3
+      .deleteObject({
+        Bucket: this.bucket,
+        Key: key,
+      })
+      .promise();
   }
 
   async uploadFile(buffer: Buffer, key: string, contentType: string): Promise<string> {
-    await this.s3.putObject({
-      Bucket: this.bucket,
-      Key: key,
-      Body: buffer,
-      ContentType: contentType,
-    }).promise();
+    await this.s3
+      .putObject({
+        Bucket: this.bucket,
+        Key: key,
+        Body: buffer,
+        ContentType: contentType,
+      })
+      .promise();
 
     return key;
   }
 }
-

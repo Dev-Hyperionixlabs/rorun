@@ -10,10 +10,14 @@ import {
   UseGuards,
   Request,
 } from '@nestjs/common';
-import { ApiTags, ApiOperation, ApiBearerAuth, ApiParam, ApiQuery } from '@nestjs/swagger';
+import { ApiTags, ApiOperation, ApiBearerAuth, ApiParam } from '@nestjs/swagger';
 import { TransactionsService } from './transactions.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
-import { CreateTransactionDto, UpdateTransactionDto, TransactionQueryDto } from './dto/transaction.dto';
+import {
+  CreateTransactionDto,
+  UpdateTransactionDto,
+  TransactionQueryDto,
+} from './dto/transaction.dto';
 
 @ApiTags('transactions')
 @Controller('businesses/:businessId/transactions')
@@ -52,11 +56,7 @@ export class TransactionsController {
   @Put(':id')
   @ApiParam({ name: 'id', description: 'Transaction ID' })
   @ApiOperation({ summary: 'Update transaction' })
-  async update(
-    @Param('id') id: string,
-    @Request() req,
-    @Body() dto: UpdateTransactionDto,
-  ) {
+  async update(@Param('id') id: string, @Request() req, @Body() dto: UpdateTransactionDto) {
     return this.transactionsService.update(id, req.user.id, dto);
   }
 
@@ -67,4 +67,3 @@ export class TransactionsController {
     return this.transactionsService.remove(id, req.user.id);
   }
 }
-

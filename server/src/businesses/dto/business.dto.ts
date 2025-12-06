@@ -82,4 +82,3 @@ export class UpdateBusinessDto {
   @IsOptional()
   estimatedTurnoverBand?: string;
 }
-

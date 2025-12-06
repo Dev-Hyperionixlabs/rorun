@@ -18,10 +18,9 @@ export class KnowledgeController {
 
   @Get(':slug')
   @ApiParam({ name: 'slug', description: 'Article slug' })
-  @ApiQuery({ name: 'language', required: false, default: 'en' })
+  @ApiQuery({ name: 'language', required: false })
   @ApiOperation({ summary: 'Get article by slug' })
   async findOne(@Param('slug') slug: string, @Query('language') language?: string) {
     return this.knowledgeService.findOne(slug, language || 'en');
   }
 }
-

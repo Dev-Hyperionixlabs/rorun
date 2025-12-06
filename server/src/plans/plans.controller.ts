@@ -20,4 +20,3 @@ export class PlansController {
     return this.plansService.findOne(id);
   }
 }
-

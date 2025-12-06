@@ -33,4 +33,3 @@ export class UpdateUserDto {
   @IsOptional()
   languagePref?: string;
 }
-

@@ -25,9 +25,7 @@ export class SchedulerService {
   @Cron(CronExpression.EVERY_1ST_DAY_OF_MONTH_AT_MIDNIGHT)
   async generateMonthlyObligations() {
     console.log('Generating monthly obligations...');
-    const currentYear = new Date().getFullYear();
     // This would need to get all businesses and generate obligations
     // Implementation would iterate through businesses
   }
 }
-

@@ -2,6 +2,8 @@ import { Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../prisma/prisma.service';
 import * as admin from 'firebase-admin';
+import { UpdateNotificationSettingsDto } from './notification-settings.dto';
+import { ForbiddenException } from '@nestjs/common';
 
 @Injectable()
 export class NotificationService {
@@ -121,5 +123,57 @@ export class NotificationService {
 
     return messages[alert.type] || 'You have a new alert';
   }
-}
 
+  async getSettings(businessId: string, userId: string) {
+    const business = await this.prisma.business.findUnique({
+      where: { id: businessId },
+      select: { ownerUserId: true },
+    });
+    if (!business || business.ownerUserId !== userId) {
+      throw new ForbiddenException();
+    }
+
+    const settings = await this.prisma.notificationSetting.findUnique({
+      where: { businessId },
+    });
+    if (settings) return settings;
+
+    return this.prisma.notificationSetting.create({
+      data: {
+        businessId,
+        deadlineDueSoon: true,
+        deadlineVerySoon: true,
+        monthlyReminder: true,
+        missingReceipts: true,
+      },
+    });
+  }
+
+  async updateSettings(businessId: string, userId: string, dto: UpdateNotificationSettingsDto) {
+    const business = await this.prisma.business.findUnique({
+      where: { id: businessId },
+      select: { ownerUserId: true },
+    });
+    if (!business || business.ownerUserId !== userId) {
+      throw new ForbiddenException();
+    }
+
+    const exists = await this.prisma.notificationSetting.findUnique({
+      where: { businessId },
+    });
+
+    if (exists) {
+      return this.prisma.notificationSetting.update({
+        where: { businessId },
+        data: dto,
+      });
+    }
+
+    return this.prisma.notificationSetting.create({
+      data: {
+        businessId,
+        ...dto,
+      },
+    });
+  }
+}

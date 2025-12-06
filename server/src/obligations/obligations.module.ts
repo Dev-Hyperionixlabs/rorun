@@ -11,4 +11,3 @@ import { BusinessesModule } from '../businesses/businesses.module';
   exports: [ObligationsService],
 })
 export class ObligationsModule {}
-

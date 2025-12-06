@@ -16,10 +16,7 @@ export class InvoicesService {
     // Generate invoice number
     const invoiceNumber = await this.generateInvoiceNumber(businessId);
 
-    const totalAmount = data.items.reduce(
-      (sum, item) => sum + Number(item.amount),
-      0,
-    );
+    const totalAmount = data.items.reduce((sum, item) => sum + Number(item.amount), 0);
 
     const invoice = await this.prisma.invoice.create({
       data: {
@@ -82,6 +79,7 @@ export class InvoicesService {
     }
 
     const { business, ...result } = invoice;
+    void business;
     return result;
   }
 
@@ -106,4 +104,3 @@ export class InvoicesService {
     return `INV-${year}-${String(count + 1).padStart(6, '0')}`;
   }
 }
-

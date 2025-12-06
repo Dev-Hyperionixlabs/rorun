@@ -1,4 +1,12 @@
-import { IsString, IsDateString, IsNumber, IsOptional, IsArray, ValidateNested, IsEnum } from 'class-validator';
+import {
+  IsString,
+  IsDateString,
+  IsNumber,
+  IsOptional,
+  IsArray,
+  ValidateNested,
+  IsEnum,
+} from 'class-validator';
 import { ApiProperty } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
 
@@ -83,4 +91,3 @@ export class UpdateInvoiceDto {
   @IsOptional()
   notes?: string;
 }
-

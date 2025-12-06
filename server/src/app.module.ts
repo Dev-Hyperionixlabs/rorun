@@ -22,6 +22,9 @@ import { StorageModule } from './storage/storage.module';
 import { NotificationModule } from './notification/notification.module';
 import { AiModule } from './ai/ai.module';
 import { SchedulerModule } from './scheduler/scheduler.module';
+import { TaxSafetyModule } from './tax-safety/tax-safety.module';
+import { RecommendedActionsModule } from './recommended-actions/recommended-actions.module';
+import { FilingPacksModule } from './filing-packs/filing-packs.module';
 
 @Module({
   imports: [
@@ -57,7 +60,9 @@ import { SchedulerModule } from './scheduler/scheduler.module';
     NotificationModule,
     AiModule,
     SchedulerModule,
+    TaxSafetyModule,
+    RecommendedActionsModule,
+    FilingPacksModule,
   ],
 })
 export class AppModule {}
-

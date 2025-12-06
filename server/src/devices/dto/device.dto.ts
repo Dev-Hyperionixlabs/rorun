@@ -11,4 +11,3 @@ export class CreateDeviceDto {
   @IsOptional()
   pushToken?: string;
 }
-

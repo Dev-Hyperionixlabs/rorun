@@ -46,7 +46,6 @@ export class ObligationsService {
   async generateObligations(businessId: string, userId: string, year: number) {
     await this.businessesService.findOne(businessId, userId);
 
-    const business = await this.businessesService.findOne(businessId, userId);
     const taxProfile = await this.prisma.taxProfile.findUnique({
       where: {
         businessId_taxYear: {
@@ -124,4 +123,3 @@ export class ObligationsService {
     return createdObligations;
   }
 }
-

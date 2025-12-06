@@ -12,4 +12,3 @@ import { StorageModule } from '../storage/storage.module';
   exports: [ReportingService],
 })
 export class ReportingModule {}
-

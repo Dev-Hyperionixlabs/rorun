@@ -12,4 +12,3 @@ import { NotificationModule } from '../notification/notification.module';
   exports: [AlertsService],
 })
 export class AlertsModule {}
-

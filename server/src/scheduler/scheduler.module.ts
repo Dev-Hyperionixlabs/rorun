@@ -8,4 +8,3 @@ import { ObligationsModule } from '../obligations/obligations.module';
   providers: [SchedulerService],
 })
 export class SchedulerModule {}
-

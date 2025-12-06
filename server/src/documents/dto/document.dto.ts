@@ -30,4 +30,3 @@ export class UpdateDocumentDto {
   @IsOptional()
   relatedTransactionId?: string;
 }
-

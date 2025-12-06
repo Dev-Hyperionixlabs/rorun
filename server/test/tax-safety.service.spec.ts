@@ -1,0 +1,78 @@
+import { TaxSafetyService } from '../src/tax-safety/tax-safety.service';
+import { TAX_SAFETY_MAX_SCORE, TaxSafetyScore } from '../src/tax-safety/tax-safety.constants';
+
+// We test the pure scoring function using a dummy subclass that exposes it.
+class TestableTaxSafetyService extends TaxSafetyService {
+  constructor() {
+    // @ts-expect-error - we are not using prisma or businessesService in these tests
+    super(undefined, undefined);
+  }
+
+  public compute(businessId: string, taxYear: number, metrics: any): TaxSafetyScore {
+    return this.computeScoreFromMetrics(businessId, taxYear, metrics);
+  }
+}
+
+describe('TaxSafetyService scoring', () => {
+  const service = new TestableTaxSafetyService();
+
+  it('returns high score when everything is good', () => {
+    const metrics = {
+      hasCurrentTaxProfile: true,
+      monthsElapsedInYear: 6,
+      monthsWithAnyTransactions: 6,
+      highValueTxCount: 10,
+      highValueWithDocumentCount: 9,
+      hasOverdueObligation: false,
+      daysUntilNextDeadline: 90,
+    };
+
+    const result = service.compute('biz-1', 2025, metrics);
+    expect(result.score).toBe(TAX_SAFETY_MAX_SCORE);
+    expect(result.band).toBe('high');
+    expect(result.reasons).toHaveLength(0);
+  });
+
+  it('penalises missing eligibility and overdue obligations', () => {
+    const metrics = {
+      hasCurrentTaxProfile: false,
+      monthsElapsedInYear: 6,
+      monthsWithAnyTransactions: 2,
+      highValueTxCount: 6,
+      highValueWithDocumentCount: 1,
+      hasOverdueObligation: true,
+      daysUntilNextDeadline: -5,
+    };
+
+    const result = service.compute('biz-1', 2025, metrics);
+
+    // Base 100
+    // -20 missing eligibility
+    // -20 low records (<0.5)
+    // -20 low receipt coverage (<0.5)
+    // -30 overdue obligation
+    // = 10
+    expect(result.score).toBe(10);
+    expect(result.band).toBe('low');
+    expect(result.reasons).toContain('MISSING_ELIGIBILITY');
+    expect(result.reasons).toContain('LOW_RECORDS_COVERAGE');
+    expect(result.reasons).toContain('LOW_RECEIPT_COVERAGE');
+    expect(result.reasons).toContain('OVERDUE_OBLIGATION');
+  });
+
+  it('clamps score between 0 and 100', () => {
+    const metrics = {
+      hasCurrentTaxProfile: false,
+      monthsElapsedInYear: 12,
+      monthsWithAnyTransactions: 0,
+      highValueTxCount: 20,
+      highValueWithDocumentCount: 0,
+      hasOverdueObligation: true,
+      daysUntilNextDeadline: 1,
+    };
+
+    const result = service.compute('biz-1', 2025, metrics);
+    expect(result.score).toBeGreaterThanOrEqual(0);
+    expect(result.score).toBeLessThanOrEqual(100);
+  });
+});

@@ -11,4 +11,3 @@ import { StorageModule } from '../storage/storage.module';
   exports: [AiService],
 })
 export class AiModule {}
-
