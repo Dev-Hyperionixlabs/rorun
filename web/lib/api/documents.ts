@@ -8,8 +8,10 @@ export interface Document {
   id: string;
   businessId: string;
   fileName: string;
-  fileType: string;
+  fileType?: string;
   fileUrl: string;
+  url?: string; // Alias for fileUrl for compatibility
+  type?: "receipt" | "bank_statement" | "other"; // Alias for fileType
   relatedTransactionId?: string;
   uploadedAt: string;
 }
@@ -23,7 +25,15 @@ export async function getDocuments(businessId: string): Promise<Document[]> {
   });
   if (!res.ok) throw new Error("Failed to fetch documents");
   const data = await res.json();
-  return data.items || [];
+  const items = data.items || [];
+  // Normalize: ensure both url/fileUrl and type/fileType are available
+  return items.map((doc: any) => ({
+    ...doc,
+    url: doc.url || doc.fileUrl,
+    fileUrl: doc.fileUrl || doc.url,
+    type: doc.type || doc.fileType,
+    fileType: doc.fileType || doc.type,
+  }));
 }
 
 export async function uploadDocument(
@@ -52,7 +62,15 @@ export async function uploadDocument(
     throw new Error(text || "Failed to upload document");
   }
 
-  return res.json();
+  const doc = await res.json();
+  // Normalize: ensure both url/fileUrl and type/fileType are available
+  return {
+    ...doc,
+    url: doc.url || doc.fileUrl,
+    fileUrl: doc.fileUrl || doc.url,
+    type: doc.type || doc.fileType,
+    fileType: doc.fileType || doc.type,
+  };
 }
 
 export async function deleteDocument(businessId: string, docId: string): Promise<void> {

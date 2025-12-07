@@ -102,15 +102,15 @@ export default function DocumentsPage() {
                   <div>
                     <p className="text-sm font-medium text-slate-900">{doc.fileName}</p>
                     <p className="text-xs text-slate-500">
-                      {(doc as any).fileType ?? (doc as any).type ?? "Document"} •{" "}
+                      {doc.type || doc.fileType || "Document"} •{" "}
                       {new Date(doc.uploadedAt).toDateString()}
                     </p>
                   </div>
                 </div>
                 <div className="flex items-center gap-2">
-                  {doc.url && (
+                  {(doc.url || doc.fileUrl) && (
                     <a
-                      href={doc.url}
+                      href={doc.url || doc.fileUrl || "#"}
                       target="_blank"
                       rel="noopener noreferrer"
                       className="flex items-center gap-1 rounded-full bg-slate-100 px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-200"
