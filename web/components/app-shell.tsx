@@ -24,6 +24,12 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const [navOpen, setNavOpen] = useState(false);
   const [showAlerts, setShowAlerts] = useState(false);
 
+  // Hooks must be called before any early returns
+  const sortedAlerts = useMemo(
+    () => [...alerts].sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1)),
+    [alerts]
+  );
+
   if (loading || !user) {
     return (
       <div className="min-h-screen bg-slate-50 text-slate-900 flex items-center justify-center text-sm text-slate-500">
@@ -35,11 +41,6 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const unreadCount = alerts.filter((a) => !a.readAt).length;
   const business =
     businesses.find((b) => b.id === user.currentBusinessId) || businesses[0];
-
-  const sortedAlerts = useMemo(
-    () => [...alerts].sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1)),
-    [alerts]
-  );
 
   return (
     <div className="min-h-screen bg-slate-50 text-slate-900">
