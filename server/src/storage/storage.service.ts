@@ -8,12 +8,14 @@ export class StorageService {
   private bucket: string;
 
   constructor(private configService: ConfigService) {
-    const accessKeyId = this.configService.get<string>('AWS_ACCESS_KEY_ID');
-    const secretAccessKey = this.configService.get<string>('AWS_SECRET_ACCESS_KEY');
-    const region = this.configService.get<string>('AWS_REGION') || 'us-east-1';
-    const endpoint = this.configService.get<string>('AWS_S3_ENDPOINT');
+    // Support both S3_* (preferred) and AWS_* (legacy) env var names
+    const accessKeyId = this.configService.get<string>('S3_ACCESS_KEY_ID') || this.configService.get<string>('AWS_ACCESS_KEY_ID');
+    const secretAccessKey = this.configService.get<string>('S3_SECRET_ACCESS_KEY') || this.configService.get<string>('AWS_SECRET_ACCESS_KEY');
+    const region = this.configService.get<string>('S3_REGION') || this.configService.get<string>('AWS_REGION') || 'auto';
+    const endpoint = this.configService.get<string>('S3_ENDPOINT') || this.configService.get<string>('AWS_S3_ENDPOINT');
+    const forcePathStyle = this.configService.get<string>('S3_FORCE_PATH_STYLE') === 'true';
 
-    this.bucket = this.configService.get<string>('AWS_S3_BUCKET') || 'rorun-documents';
+    this.bucket = this.configService.get<string>('S3_BUCKET') || this.configService.get<string>('AWS_S3_BUCKET') || 'rorun-documents';
 
     const s3Config: AWS.S3.ClientConfiguration = {
       region,
@@ -28,7 +30,7 @@ export class StorageService {
 
     if (endpoint) {
       s3Config.endpoint = endpoint;
-      s3Config.s3ForcePathStyle = true;
+      s3Config.s3ForcePathStyle = forcePathStyle || true;
     }
 
     this.s3 = new AWS.S3(s3Config);
