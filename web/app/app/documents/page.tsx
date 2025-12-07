@@ -33,7 +33,6 @@ export default function DocumentsPage() {
       addToast({
         title: "Upload failed",
         description: err?.message || "Unable to upload document",
-        variant: "danger",
       });
     }
 
