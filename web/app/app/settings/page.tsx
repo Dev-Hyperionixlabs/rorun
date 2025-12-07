@@ -176,11 +176,21 @@ function PlanSettingsSection() {
 
 function ProfileSettingsSection() {
   const { user, updateUser } = useMockApi();
-  const [name, setName] = useState(user.name || "");
-  const [email, setEmail] = useState(user.email || "");
-  const [language, setLanguage] = useState(user.preferredLanguage);
+  const [name, setName] = useState(user?.name || "");
+  const [email, setEmail] = useState(user?.email || "");
+  const [language, setLanguage] = useState(user?.preferredLanguage);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  if (!user) {
+    return (
+      <Card className="bg-white">
+        <CardContent className="py-6 text-sm text-slate-500">
+          Loading profile...
+        </CardContent>
+      </Card>
+    );
+  }
 
   const handleSave = () => {
     setSaving(true);
@@ -229,11 +239,21 @@ function ProfileSettingsSection() {
 function WorkspaceSettingsSection() {
   const { businesses, updateBusiness } = useMockApi();
   const business = businesses[0];
-  const [name, setName] = useState(business.name);
+  const [name, setName] = useState(business?.name || "");
   const [taxYear, setTaxYear] = useState(new Date().getFullYear());
   const [currency] = useState("NGN");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  if (!business) {
+    return (
+      <Card className="bg-white">
+        <CardContent className="py-6 text-sm text-slate-500">
+          Loading workspace...
+        </CardContent>
+      </Card>
+    );
+  }
 
   const handleSave = () => {
     setSaving(true);
@@ -285,6 +305,16 @@ function NotificationsSettingsSection() {
   const [missingReceipts, setMissingReceipts] = useState(true);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  if (!business) {
+    return (
+      <Card className="bg-white">
+        <CardContent className="py-6 text-sm text-slate-500">
+          Loading notification settings...
+        </CardContent>
+      </Card>
+    );
+  }
 
   useEffect(() => {
     let mounted = true;
