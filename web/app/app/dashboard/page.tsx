@@ -22,6 +22,11 @@ function DashboardContent() {
   const { businesses, transactions, alerts, currentPlanId } = useMockApi();
 
   const business = businesses[0];
+
+  if (!business) {
+    return <div className="text-sm text-slate-500">Loading dashboard…</div>;
+  }
+
   const income = transactions
     .filter((t) => t.type === "income")
     .reduce((sum, t) => sum + t.amount, 0);

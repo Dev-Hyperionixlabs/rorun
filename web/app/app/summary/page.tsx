@@ -11,12 +11,13 @@ export default function SummaryPage() {
   const summary = yearSummaries[0];
   const business = businesses[0];
   const year = new Date().getFullYear();
-  const { pack, isLoading, error, generate } = useFilingPack(business.id, year);
   const [localError, setLocalError] = useState<string | null>(null);
 
   if (loading || !business || !summary) {
     return <div className="text-sm text-slate-500">Loading summary…</div>;
   }
+
+  const { pack, isLoading, error, generate } = useFilingPack(business.id, year);
 
   return (
     <div className="space-y-4">

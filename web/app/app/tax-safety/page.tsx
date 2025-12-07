@@ -54,6 +54,10 @@ export default function TaxSafetyDetailPage() {
   const business = businesses[0];
   const year = new Date().getFullYear();
 
+  if (!business) {
+    return <div className="text-sm text-slate-500">Loading tax safety details…</div>;
+  }
+
   const score = useMemo(
     () => computeTaxSafetyScoreFromMock(business, transactions, year),
     [business, transactions, year]
