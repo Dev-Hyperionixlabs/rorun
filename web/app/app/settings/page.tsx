@@ -330,6 +330,16 @@ function NotificationsSettingsSection() {
     };
   }, [business]);
 
+  if (!business) {
+    return (
+      <Card className="bg-white">
+        <CardContent className="py-6 text-sm text-slate-500">
+          Loading notification settings...
+        </CardContent>
+      </Card>
+    );
+  }
+
   const persist = async (next: {
     deadlineDueSoon: boolean;
     deadlineVerySoon: boolean;
