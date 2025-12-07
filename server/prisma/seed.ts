@@ -308,7 +308,7 @@ Value Added Tax (VAT) in Nigeria is charged at **7.5%** on goods and services.
       cacNumber: 'CAC-123456',
       tin: 'TIN-987654',
       vatRegistered: false,
-      turnoverBand: '<25m',
+    estimatedTurnoverBand: '<25m',
     },
   });
 
@@ -325,43 +325,31 @@ Value Added Tax (VAT) in Nigeria is charged at **7.5%** on goods and services.
     },
   });
 
-  await prisma.notificationSetting.upsert({
-    where: { businessId: defaultBusiness.id },
-    update: {},
-    create: {
-      businessId: defaultBusiness.id,
-      deadlineDueSoon: true,
-      deadlineVerySoon: true,
-      monthlyReminder: true,
-      missingReceipts: true,
-    },
-  });
-
   const now = new Date();
-  const sampleIncome = await prisma.transaction.create({
-    data: {
-      id: 'seed-tx-income-1',
-      businessId: defaultBusiness.id,
-      type: 'income',
-      amount: 7500000,
-      currency: 'NGN',
-      date: now,
-      description: 'Monthly sales revenue',
-      source: 'manual',
-    },
-  });
-
-  const sampleExpense = await prisma.transaction.create({
-    data: {
-      id: 'seed-tx-expense-1',
-      businessId: defaultBusiness.id,
-      type: 'expense',
-      amount: 2100000,
-      currency: 'NGN',
-      date: now,
-      description: 'Inventory and logistics',
-      source: 'manual',
-    },
+  await prisma.transaction.createMany({
+    data: [
+      {
+        businessId: defaultBusiness.id,
+        type: 'income',
+        amount: 7500000,
+        currency: 'NGN',
+        date: now,
+        description: 'Monthly sales revenue',
+        source: 'manual',
+        categoryId: null,
+      },
+      {
+        businessId: defaultBusiness.id,
+        type: 'expense',
+        amount: 2100000,
+        currency: 'NGN',
+        date: now,
+        description: 'Inventory and logistics',
+        source: 'manual',
+        categoryId: null,
+      },
+    ],
+    skipDuplicates: true,
   });
 
   await prisma.alert.createMany({
@@ -369,19 +357,25 @@ Value Added Tax (VAT) in Nigeria is charged at **7.5%** on goods and services.
       {
         id: 'seed-alert-1',
         businessId: defaultBusiness.id,
-        type: 'deadline',
+        type: 'deadline_threshold',
+        messageKey: 'annual_return_due',
         severity: 'warning',
-        title: 'Annual return due in 45 days',
-        message: 'Prepare filings and supporting documents for this tax year.',
+        payloadJson: {
+          title: 'Annual return due in 45 days',
+          message: 'Prepare filings and supporting documents for this tax year.',
+        },
         createdAt: now,
       },
       {
         id: 'seed-alert-2',
         businessId: defaultBusiness.id,
         type: 'threshold',
+        messageKey: 'turnover_threshold',
         severity: 'info',
-        title: 'You are at 30% of your ₦25m turnover band',
-        message: 'If you cross ₦25m in 12 months, VAT registration becomes mandatory.',
+        payloadJson: {
+          title: 'You are at 30% of your ₦25m turnover band',
+          message: 'If you cross ₦25m in 12 months, VAT registration becomes mandatory.',
+        },
         createdAt: now,
       },
     ],
