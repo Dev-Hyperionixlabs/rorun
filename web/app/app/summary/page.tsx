@@ -12,12 +12,12 @@ export default function SummaryPage() {
   const business = businesses[0];
   const year = new Date().getFullYear();
   const [localError, setLocalError] = useState<string | null>(null);
+  // Hooks must be called unconditionally - use fallback ID if business is null
+  const { pack, isLoading, error, generate } = useFilingPack(business?.id || "", year);
 
   if (loading || !business || !summary) {
     return <div className="text-sm text-slate-500">Loading summary…</div>;
   }
-
-  const { pack, isLoading, error, generate } = useFilingPack(business.id, year);
 
   return (
     <div className="space-y-4">

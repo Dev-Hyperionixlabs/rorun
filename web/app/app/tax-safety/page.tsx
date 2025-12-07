@@ -53,15 +53,33 @@ export default function TaxSafetyDetailPage() {
   const { businesses, transactions } = useMockApi();
   const business = businesses[0];
   const year = new Date().getFullYear();
+  // Hooks must be called unconditionally - provide fallback score if business is null
+  const score = useMemo(
+    () => {
+      if (!business) {
+        return {
+          businessId: "",
+          taxYear: year,
+          score: 0,
+          band: "low" as const,
+          reasons: [] as const,
+          breakdown: {
+            hasCurrentTaxProfile: false,
+            recordsCoverageRatio: 0,
+            receiptCoverageRatio: null,
+            hasOverdueObligation: false,
+            daysUntilNextDeadline: null,
+          },
+        };
+      }
+      return computeTaxSafetyScoreFromMock(business, transactions, year);
+    },
+    [business, transactions, year]
+  );
 
   if (!business) {
     return <div className="text-sm text-slate-500">Loading tax safety details…</div>;
   }
-
-  const score = useMemo(
-    () => computeTaxSafetyScoreFromMock(business, transactions, year),
-    [business, transactions, year]
-  );
 
   const bandSummary =
     score.band === "high"

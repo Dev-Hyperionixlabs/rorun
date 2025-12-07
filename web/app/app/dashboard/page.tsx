@@ -22,6 +22,10 @@ function DashboardContent() {
   const { businesses, transactions, alerts, currentPlanId } = useMockApi();
 
   const business = businesses[0];
+  const year = new Date().getFullYear();
+  // Hooks must be called unconditionally - use fallback ID if business is null
+  const { pack, isLoading: packLoading, generate } = useFilingPack(business?.id || "", year);
+  const [packError, setPackError] = useState<string | null>(null);
 
   if (!business) {
     return <div className="text-sm text-slate-500">Loading dashboard…</div>;
@@ -53,10 +57,6 @@ function DashboardContent() {
   };
 
   const fromOnboarding = searchParams.get("from") === "onboarding";
-
-  const year = new Date().getFullYear();
-  const { pack, isLoading: packLoading, generate } = useFilingPack(business.id, year);
-  const [packError, setPackError] = useState<string | null>(null);
   const canGeneratePack = currentPlanId !== "free";
 
   const handleGeneratePack = async () => {

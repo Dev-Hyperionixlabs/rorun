@@ -306,17 +306,9 @@ function NotificationsSettingsSection() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  if (!business) {
-    return (
-      <Card className="bg-white">
-        <CardContent className="py-6 text-sm text-slate-500">
-          Loading notification settings...
-        </CardContent>
-      </Card>
-    );
-  }
-
+  // Hooks must be called unconditionally
   useEffect(() => {
+    if (!business) return;
     let mounted = true;
     async function load() {
       if (!business) return;
