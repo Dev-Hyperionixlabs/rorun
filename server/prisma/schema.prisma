@@ -276,7 +276,7 @@ model FilingPack {
   business         Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
   createdBy        User     @relation(fields: [createdByUserId], references: [id], onDelete: Restrict)
 
-  @@index([businessId, taxYear])
+  @@unique([businessId, taxYear])
   @@map("filing_packs")
 }
 
