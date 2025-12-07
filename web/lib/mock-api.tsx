@@ -1,326 +1,240 @@
-'use client';
+"use client";
 
-import React, { createContext, useContext, useState, useMemo } from "react";
-import { nanoid } from "./nanoid";
+import React, { createContext, useContext, useEffect, useMemo, useState } from "react";
+import { PLANS, PlanMeta, PlanId } from "./plans";
 import {
   Alert,
   Business,
   EligibilityResult,
   FilingPack,
   KnowledgeArticle,
-  Plan,
-  PlanId,
   Transaction,
   User,
-  YearSummary
+  YearSummary,
 } from "./types";
+import { getCurrentUser } from "./api/auth";
+import {
+  getBusinessPlan,
+  getBusinesses,
+  updateBusiness as updateBusinessApi,
+  updateBusinessPlan,
+} from "./api/businesses";
+import { getTransactions as fetchTransactions, createTransaction, deleteTransaction } from "./api/transactions";
+import { getAlerts as fetchAlerts, markAlertRead as markAlertReadApi } from "./api/alerts";
+import { getKnowledgeArticles } from "./api/knowledge";
+import { runEligibilityCheck } from "./api/eligibility";
+import { getLatestFilingPack, createFilingPack } from "./api/filingPacks";
+import { getYearSummary } from "./api/summary";
+import { updateProfileApi } from "./api/profile";
+import { getDocuments as fetchDocuments, uploadDocument } from "./api/documents";
+import { ApiError } from "./api/client";
 
-interface Document {
-  id: string;
-  fileName: string;
-  type: string;
-  uploadedAt: string;
-  url?: string;
-}
+type Document = import("./api/documents").Document;
 
-interface MockApiState {
-  user: User;
+interface AppState {
+  loading: boolean;
+  error?: string;
+  user: User | null;
   businesses: Business[];
+  currentBusinessId: string | null;
   transactions: Transaction[];
   documents: Document[];
   alerts: Alert[];
-  plans: Plan[];
+  plans: PlanMeta[];
   currentPlanId: PlanId;
   yearSummaries: YearSummary[];
   knowledge: KnowledgeArticle[];
 }
 
-interface MockApiContextValue extends MockApiState {
-  setCurrentPlan(id: PlanId): void;
-  updateUser(patch: Partial<User>): void;
-  updateBusiness(id: string, patch: Partial<Business>): void;
+interface AppContextValue extends AppState {
+  refresh(): Promise<void>;
+  setCurrentPlan(id: PlanId): Promise<void>;
+  updateUser(patch: Partial<User>): Promise<void>;
+  updateBusiness(id: string, patch: Partial<Business>): Promise<void>;
   evaluateEligibility(businessId: string): Promise<EligibilityResult>;
-  addTransaction(input: Omit<Transaction, "id">): Promise<Transaction>;
+  addTransaction(input: Omit<Transaction, "id" | "currency" | "hasDocument" | "categoryId">): Promise<Transaction>;
   deleteTransaction(id: string): Promise<void>;
-  markAlertRead(id: string): void;
+  markAlertRead(id: string): Promise<void>;
   generateFilingPack(businessId: string, year: number): Promise<FilingPack>;
-  addDocument(doc: Document): void;
+  addDocument(file: File, relatedTransactionId?: string): Promise<Document>;
+  setCurrentBusiness(id: string): void;
 }
 
-const MockApiContext = createContext<MockApiContextValue | null>(null);
+const AppContext = createContext<AppContextValue | null>(null);
 
-const initialUser: User = {
-  id: "user-1",
-  name: "Rorun Demo",
-  email: "demo@rorun.ng",
-  phone: "+2348012345678",
-  currentBusinessId: "biz-1",
-  preferredLanguage: "en"
-};
-
-const initialBusiness: Business = {
-  id: "biz-1",
-  name: "Demo Ventures",
-  role: "Owner",
-  legalForm: "sole_proprietor",
-  sector: "Retail / Trade",
-  state: "Lagos",
-  hasCAC: true,
-  hasTIN: true,
-  vatRegistered: false,
-  turnoverBand: "<25m"
-};
-
-const initialPlans: Plan[] = [
-  {
-    id: "free",
-    name: "Free",
-    priceLabel: "₦0 / month",
-    description: "For very small, informal businesses.",
-    features: [
-      "Eligibility checker",
-      "Up to 100 transactions / year",
-      "Basic year-end summary"
-    ]
-  },
-  {
-    id: "basic",
-    name: "Basic",
-    priceLabel: "₦3,500 / month",
-    description: "For small businesses keeping regular records.",
-    features: [
-      "Everything in Free",
-      "Unlimited transactions",
-      "Document storage",
-      "Alerts and reminders"
-    ]
-  },
-  {
-    id: "business",
-    name: "Business",
-    priceLabel: "₦8,500 / month",
-    description: "For growing SMEs that want deeper insight.",
-    features: [
-      "Everything in Basic",
-      "Advanced reports",
-      "Priority support"
-    ]
-  },
-  {
-    id: "accountant",
-    name: "Accountant",
-    priceLabel: "Contact us",
-    description: "For accountants managing multiple clients.",
-    features: [
-      "Multi-business view",
-      "Export packs for all clients",
-      "Team access"
-    ]
+async function safeApi<T>(fn: () => Promise<T>, fallback: T): Promise<T> {
+  try {
+    return await fn();
+  } catch (err) {
+    console.warn("App data fetch failed:", err);
+    return fallback;
   }
-];
+}
 
-const initialAlerts: Alert[] = [
-  {
-    id: "alert-1",
-    businessId: "biz-1",
-    type: "deadline",
-    severity: "warning",
-    title: "VAT filing deadline in 30 days",
-    message:
-      "If you register for VAT, your first return will be due 30 days after month end.",
-    createdAt: new Date().toISOString()
-  },
-  {
-    id: "alert-2",
-    businessId: "biz-1",
-    type: "threshold",
-    severity: "info",
-    title: "You are at 65% of your ₦25m turnover band",
-    message:
-      "If you cross ₦25m in 12 months, some of your tax obligations change. Keep an eye on this.",
-    createdAt: new Date().toISOString()
-  }
-];
-
-const initialKnowledge: KnowledgeArticle[] = [
-  {
-    id: "k1",
-    slug: "what-does-0-tax-mean",
-    title: "What does 0% tax really mean?",
-    language: "en",
-    tags: ["basics"],
-    content:
-      "For many micro and small Nigerian businesses, company income tax (CIT) is effectively 0% if your turnover is below ₦25m. That does not mean you can ignore FIRS. You still need to file, keep records and respond to notices."
-  },
-  {
-    id: "k1-pidgin",
-    slug: "what-does-0-tax-mean",
-    title: "Wetn 0% tax really mean?",
-    language: "pidgin",
-    tags: ["basics"],
-    content:
-      "If your business dey make less than ₦25m a year, government no go collect CIT from you. But e no mean say you go just ghost FIRS. You still need gist dem small, file your paper and keep beta records."
-  }
-];
-
-const defaultSummary: YearSummary = {
-  year: new Date().getFullYear(),
+const emptySummary = (year: number): YearSummary => ({
+  year,
   totalIncome: 0,
   totalExpenses: 0,
   profit: 0,
   byCategory: [],
-  packs: []
-};
+  packs: [],
+});
 
-export const MockApiProvider: React.FC<{ children: React.ReactNode }> = ({
-  children
-}) => {
-  const [state, setState] = useState<MockApiState>({
-    user: initialUser,
-    businesses: [initialBusiness],
+export const MockApiProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+  const [state, setState] = useState<AppState>({
+    loading: true,
+    user: null,
+    businesses: [],
+    currentBusinessId: null,
     transactions: [],
     documents: [],
-    alerts: initialAlerts,
-    plans: initialPlans,
+    alerts: [],
+    plans: PLANS,
     currentPlanId: "free",
-    yearSummaries: [defaultSummary],
-    knowledge: initialKnowledge
+    yearSummaries: [],
+    knowledge: [],
   });
 
-  const value: MockApiContextValue = useMemo(
-    () => ({
+  const load = async () => {
+    setState((s) => ({ ...s, loading: true, error: undefined }));
+    try {
+      const [user, businesses, knowledge] = await Promise.all([
+        getCurrentUser().catch(() => null),
+        getBusinesses().catch(() => []),
+        getKnowledgeArticles().catch(() => []),
+      ]);
+
+      const businessId = user?.currentBusinessId || businesses[0]?.id || null;
+      const year = new Date().getFullYear();
+
+      const [alerts, txResponse, documents, planId, summary] = await Promise.all([
+        businessId ? fetchAlerts(businessId) : Promise.resolve([]),
+        businessId ? fetchTransactions(businessId, { limit: 100 }) : Promise.resolve({ items: [], total: 0 }),
+        businessId ? safeApi(() => fetchDocuments(businessId), []) : Promise.resolve([]),
+        businessId ? getBusinessPlan(businessId).catch(() => null) : Promise.resolve(null),
+        businessId
+          ? safeApi(() => getYearSummary(businessId, year), emptySummary(year))
+          : Promise.resolve(emptySummary(year)),
+      ]);
+
+      setState((s) => ({
+        ...s,
+        loading: false,
+        user,
+        businesses,
+        currentBusinessId: businessId,
+        alerts,
+        transactions: txResponse.items || [],
+        documents,
+        currentPlanId: (planId as PlanId) || "free",
+        knowledge,
+        yearSummaries: [summary],
+      }));
+    } catch (err: any) {
+      setState((s) => ({
+        ...s,
+        loading: false,
+        error: err?.message || "Failed to load app data",
+      }));
+    }
+  };
+
+  useEffect(() => {
+    load();
+  }, []);
+
+  const value = useMemo<AppContextValue>(() => {
+    const businessId = state.currentBusinessId || state.user?.currentBusinessId || state.businesses[0]?.id || null;
+
+    return {
       ...state,
-      setCurrentPlan: (id) =>
+      currentBusinessId: businessId,
+      async refresh() {
+        await load();
+      },
+      async setCurrentPlan(id: PlanId) {
+        if (!businessId) return;
+        await updateBusinessPlan(businessId, id);
+        setState((s) => ({ ...s, currentPlanId: id }));
+      },
+      async updateUser(patch) {
+        await updateProfileApi({
+          name: patch.name,
+          email: patch.email,
+          preferredLanguage: patch.preferredLanguage,
+        });
+        setState((s) => (s.user ? { ...s, user: { ...s.user, ...patch } } : s));
+      },
+      async updateBusiness(id, patch) {
+        const updated = await updateBusinessApi(id, patch);
         setState((s) => ({
           ...s,
-          currentPlanId: id
-        })),
-      updateUser: (patch) =>
-        setState((s) => ({
-          ...s,
-          user: { ...s.user, ...patch }
-        })),
-      updateBusiness: (id, patch) =>
-        setState((s) => ({
-          ...s,
-          businesses: s.businesses.map((b) =>
-            b.id === id ? { ...b, ...patch } : b
-          )
-        })),
-      async evaluateEligibility(businessId) {
-        const business = state.businesses.find((b) => b.id === businessId);
-        const year = new Date().getFullYear();
-        const result: EligibilityResult = {
-          year,
-          citStatus:
-            business?.turnoverBand === "<25m" ? "exempt" : "liable",
-          vatStatus: business?.vatRegistered
-            ? "registered"
-            : business?.turnoverBand === "<25m"
-            ? "not_required"
-            : "must_register",
-          whtSummary:
-            "You may need to deduct or suffer withholding tax depending on who you trade with. Rorun will highlight common cases.",
-          headline:
-            business?.turnoverBand === "<25m"
-              ? "You qualify for 0% company income tax."
-              : "You may need to pay company income tax.",
-          explanation: [
-            "Keep simple, accurate records of income and expenses.",
-            "File at least once a year even if tax due is 0.",
-            "Respond quickly to any FIRS notices to avoid penalties."
-          ],
-          riskLevel:
-            business?.turnoverBand === "<25m" ? "safe" : "attention"
-        };
-
-        setState((s) => ({
-          ...s,
-          businesses: s.businesses.map((b) =>
-            b.id === businessId ? { ...b, eligibility: result } : b
-          )
+          businesses: s.businesses.map((b) => (b.id === id ? { ...b, ...updated } : b)),
         }));
-
-        return new Promise<EligibilityResult>((resolve) =>
-          setTimeout(() => resolve(result), 500)
-        );
+      },
+      async evaluateEligibility(bId: string) {
+        const result = await runEligibilityCheck(bId);
+        setState((s) => ({
+          ...s,
+          businesses: s.businesses.map((b) => (b.id === bId ? { ...b, eligibility: result } : b)),
+        }));
+        return result;
       },
       async addTransaction(input) {
-        const tx: Transaction = { ...input, id: nanoid() };
+        if (!businessId) throw new ApiError(400, "No business selected");
+        const created = await createTransaction({
+          businessId,
+          type: input.type,
+          amount: input.amount,
+          description: input.description,
+          category: (input as any).categoryId,
+          date: input.date,
+        });
         setState((s) => ({
           ...s,
-          transactions: [tx, ...s.transactions]
+          transactions: [created as Transaction, ...s.transactions],
         }));
-        return new Promise<Transaction>((resolve) =>
-          setTimeout(() => resolve(tx), 300)
-        );
+        return created as Transaction;
       },
       async deleteTransaction(id) {
+        if (!businessId) return;
+        await deleteTransaction(businessId, id);
         setState((s) => ({
           ...s,
-          transactions: s.transactions.filter((t) => t.id !== id)
+          transactions: s.transactions.filter((t) => t.id !== id),
         }));
       },
-      markAlertRead(id) {
+      async markAlertRead(id) {
+        if (!businessId) return;
+        await markAlertReadApi(businessId, id);
         setState((s) => ({
           ...s,
-          alerts: s.alerts.map((a) =>
-            a.id === id ? { ...a, readAt: new Date().toISOString() } : a
-          )
+          alerts: s.alerts.map((a) => (a.id === id ? { ...a, readAt: new Date().toISOString() } : a)),
         }));
       },
-      async generateFilingPack(businessId, year) {
-        const pack: FilingPack = {
-          id: nanoid(),
-          businessId,
-          taxYear: year,
-          createdAt: new Date().toISOString(),
-          createdByUserId: state.user.id,
-          status: "ready",
-          pdfUrl: "#",
-          csvUrl: "#",
-          metadataJson: null
-        };
-        setState((s) => {
-          const summaries = s.yearSummaries.length
-            ? s.yearSummaries
-            : [defaultSummary];
-          return {
-            ...s,
-            yearSummaries: summaries.map((ys) =>
-              ys.year === year
-                ? { ...ys, packs: [pack, ...ys.packs] }
-                : ys
-            )
-          };
-        });
-        return new Promise<FilingPack>((resolve) =>
-          setTimeout(() => resolve(pack), 1000)
-        );
+      async generateFilingPack(bId: string, year: number) {
+        const existing = await getLatestFilingPack(bId, year);
+        if (existing) return existing;
+        return createFilingPack(bId, year);
       },
-      addDocument(doc) {
-        setState((s) => ({
-          ...s,
-          documents: [doc, ...s.documents]
-        }));
-      }
-    }),
-    [state]
-  );
+      async addDocument(file, relatedTransactionId) {
+        if (!businessId) throw new ApiError(400, "No business selected");
+        const doc = await uploadDocument(businessId, file, relatedTransactionId);
+        setState((s) => ({ ...s, documents: [doc, ...s.documents] }));
+        return doc;
+      },
+      setCurrentBusiness(id: string) {
+        setState((s) => ({ ...s, currentBusinessId: id }));
+      },
+    };
+  }, [state]);
 
-  return (
-    <MockApiContext.Provider value={value}>
-      {children}
-    </MockApiContext.Provider>
-  );
+  return <AppContext.Provider value={value}>{children}</AppContext.Provider>;
 };
 
 export function useMockApi() {
-  const ctx = useContext(MockApiContext);
-  if (!ctx) {
-    throw new Error("useMockApi must be used within MockApiProvider");
-  }
+  const ctx = useContext(AppContext);
+  if (!ctx) throw new Error("useMockApi must be used within MockApiProvider");
   return ctx;
 }
-
 

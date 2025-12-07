@@ -8,7 +8,7 @@ import { Upload, FileText, Eye } from "lucide-react";
 import { useToast } from "@/components/ui/toast";
 
 export default function DocumentsPage() {
-  const { documents, addDocument } = useMockApi();
+  const { documents, addDocument, loading } = useMockApi();
   const { addToast } = useToast();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [uploading, setUploading] = useState(false);
@@ -22,27 +22,28 @@ export default function DocumentsPage() {
     if (!file) return;
 
     setUploading(true);
-    
-    // Simulate upload delay
-    await new Promise((resolve) => setTimeout(resolve, 1000));
-    
-    // Add to mock data
-    addDocument({
-      id: `doc-${Date.now()}`,
-      fileName: file.name,
-      type: file.type.includes("pdf") ? "pdf" : "image",
-      uploadedAt: new Date().toISOString(),
-      url: URL.createObjectURL(file),
-    });
 
-    addToast({
-      title: "Document uploaded",
-      description: `${file.name} has been added successfully.`,
-    });
+    try {
+      await addDocument(file);
+      addToast({
+        title: "Document uploaded",
+        description: `${file.name} has been added successfully.`,
+      });
+    } catch (err: any) {
+      addToast({
+        title: "Upload failed",
+        description: err?.message || "Unable to upload document",
+        variant: "danger",
+      });
+    }
 
     setUploading(false);
     e.target.value = "";
   };
+
+  if (loading) {
+    return <div className="text-sm text-slate-500">Loading documents…</div>;
+  }
 
   return (
     <div className="space-y-4">
@@ -102,7 +103,8 @@ export default function DocumentsPage() {
                   <div>
                     <p className="text-sm font-medium text-slate-900">{doc.fileName}</p>
                     <p className="text-xs text-slate-500">
-                      {doc.type} • {new Date(doc.uploadedAt).toDateString()}
+                      {(doc as any).fileType ?? (doc as any).type ?? "Document"} •{" "}
+                      {new Date(doc.uploadedAt).toDateString()}
                     </p>
                   </div>
                 </div>

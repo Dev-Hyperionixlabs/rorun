@@ -279,6 +279,115 @@ Value Added Tax (VAT) in Nigeria is charged at **7.5%** on goods and services.
     },
   });
 
+  // Seed a default user and business with a subscription and sample data
+  const defaultUser = await prisma.user.upsert({
+    where: { phone: '+2348012345678' },
+    update: {
+      name: 'Rorun User',
+      email: 'user@rorun.ng',
+      languagePref: 'en',
+    },
+    create: {
+      phone: '+2348012345678',
+      name: 'Rorun User',
+      email: 'user@rorun.ng',
+      languagePref: 'en',
+    },
+  });
+
+  const defaultBusiness = await prisma.business.upsert({
+    where: { id: 'seed-biz-1' },
+    update: {},
+    create: {
+      id: 'seed-biz-1',
+      ownerUserId: defaultUser.id,
+      name: 'Sunrise Traders',
+      legalForm: 'sole_proprietor',
+      sector: 'Retail / Trade',
+      state: 'Lagos',
+      cacNumber: 'CAC-123456',
+      tin: 'TIN-987654',
+      vatRegistered: false,
+      turnoverBand: '<25m',
+    },
+  });
+
+  await prisma.subscription.upsert({
+    where: { id: 'seed-sub-1' },
+    update: {},
+    create: {
+      id: 'seed-sub-1',
+      userId: defaultUser.id,
+      businessId: defaultBusiness.id,
+      planId: basicPlan.id,
+      status: 'active',
+      startedAt: new Date(),
+    },
+  });
+
+  await prisma.notificationSetting.upsert({
+    where: { businessId: defaultBusiness.id },
+    update: {},
+    create: {
+      businessId: defaultBusiness.id,
+      deadlineDueSoon: true,
+      deadlineVerySoon: true,
+      monthlyReminder: true,
+      missingReceipts: true,
+    },
+  });
+
+  const now = new Date();
+  const sampleIncome = await prisma.transaction.create({
+    data: {
+      id: 'seed-tx-income-1',
+      businessId: defaultBusiness.id,
+      type: 'income',
+      amount: 7500000,
+      currency: 'NGN',
+      date: now,
+      description: 'Monthly sales revenue',
+      source: 'manual',
+    },
+  });
+
+  const sampleExpense = await prisma.transaction.create({
+    data: {
+      id: 'seed-tx-expense-1',
+      businessId: defaultBusiness.id,
+      type: 'expense',
+      amount: 2100000,
+      currency: 'NGN',
+      date: now,
+      description: 'Inventory and logistics',
+      source: 'manual',
+    },
+  });
+
+  await prisma.alert.createMany({
+    data: [
+      {
+        id: 'seed-alert-1',
+        businessId: defaultBusiness.id,
+        type: 'deadline',
+        severity: 'warning',
+        title: 'Annual return due in 45 days',
+        message: 'Prepare filings and supporting documents for this tax year.',
+        createdAt: now,
+      },
+      {
+        id: 'seed-alert-2',
+        businessId: defaultBusiness.id,
+        type: 'threshold',
+        severity: 'info',
+        title: 'You are at 30% of your ₦25m turnover band',
+        message: 'If you cross ₦25m in 12 months, VAT registration becomes mandatory.',
+        createdAt: now,
+      },
+    ],
+    skipDuplicates: true,
+  });
+
   console.log('Seed data created successfully');
   console.log(`Created plans: free, basic, business, accountant`);
   console.log(`Created ${incomeCategories.length} income categories`);

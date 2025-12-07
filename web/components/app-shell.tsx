@@ -20,9 +20,17 @@ const navItems = [
 
 export function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
-  const { user, businesses, alerts } = useMockApi();
+  const { user, businesses, alerts, loading } = useMockApi();
   const [navOpen, setNavOpen] = useState(false);
   const [showAlerts, setShowAlerts] = useState(false);
+
+  if (loading || !user) {
+    return (
+      <div className="min-h-screen bg-slate-50 text-slate-900 flex items-center justify-center text-sm text-slate-500">
+        Loading your workspace…
+      </div>
+    );
+  }
 
   const unreadCount = alerts.filter((a) => !a.readAt).length;
   const business =
@@ -63,7 +71,14 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               <div className="font-medium text-slate-700 truncate">
                 {business?.name}
               </div>
-              <div className="text-[11px] text-slate-500">Lagos • Micro business</div>
+              <div className="text-[11px] text-slate-500">
+                {business?.state || "—"} •{" "}
+                {business?.turnoverBand === "<25m"
+                  ? "Micro business"
+                  : business?.turnoverBand === "25-100m"
+                  ? "Small business"
+                  : "Growing business"}
+              </div>
             </div>
             <TaxSafetyBadge />
             <button

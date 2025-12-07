@@ -101,7 +101,7 @@ export default function OnboardingPage() {
                   onChange={(e) =>
                     setForm((f) => ({ ...f, name: e.target.value }))
                   }
-                  placeholder="e.g. Demo Ventures"
+                  placeholder="e.g. Sunrise Traders"
                 />
               </div>
               <div className="space-y-1">
