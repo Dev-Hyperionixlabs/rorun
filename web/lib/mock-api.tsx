@@ -107,7 +107,7 @@ export const MockApiProvider: React.FC<{ children: React.ReactNode }> = ({ child
       const businessId = user?.currentBusinessId || businesses[0]?.id || null;
       const year = new Date().getFullYear();
 
-      const [alerts, txResponse, documents, planId, summary] = await Promise.all([
+      const [alerts, txResponse, documents, planResponse, summary] = await Promise.all([
         businessId ? fetchAlerts(businessId) : Promise.resolve([]),
         businessId ? fetchTransactions(businessId, { limit: 100 }) : Promise.resolve({ items: [], total: 0 }),
         businessId ? safeApi(() => fetchDocuments(businessId), []) : Promise.resolve([]),
@@ -116,6 +116,8 @@ export const MockApiProvider: React.FC<{ children: React.ReactNode }> = ({ child
           ? safeApi(() => getYearSummary(businessId, year), emptySummary(year))
           : Promise.resolve(emptySummary(year)),
       ]);
+
+      const resolvedPlanId = (planResponse?.planId as PlanId | undefined) ?? "free";
 
       setState((s) => ({
         ...s,
@@ -126,7 +128,7 @@ export const MockApiProvider: React.FC<{ children: React.ReactNode }> = ({ child
         alerts,
         transactions: txResponse.items || [],
         documents,
-        currentPlanId: (planId as PlanId) || "free",
+        currentPlanId: resolvedPlanId,
         knowledge,
         yearSummaries: [summary],
       }));
