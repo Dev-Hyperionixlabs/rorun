@@ -25,17 +25,17 @@ export default function OnboardingPage() {
   const [step, setStep] = useState(0);
   const [loading, setLoading] = useState(false);
 
-  const [form, setForm] = useState({
-    name: business.name,
-    role: (business.role as BusinessRole) ?? "Owner",
-    legalForm: business.legalForm,
-    sector: business.sector,
-    state: business.state,
-    hasCAC: business.hasCAC,
-    hasTIN: business.hasTIN,
-    vatRegistered: business.vatRegistered,
-    turnoverBand: business.turnoverBand
-  });
+  const [form, setForm] = useState(() => ({
+    name: business?.name ?? "",
+    role: (business?.role as BusinessRole) ?? "Owner",
+    legalForm: business?.legalForm ?? "sole_proprietor",
+    sector: business?.sector ?? "Retail / Trade",
+    state: business?.state ?? "",
+    hasCAC: business?.hasCAC ?? false,
+    hasTIN: business?.hasTIN ?? false,
+    vatRegistered: business?.vatRegistered ?? false,
+    turnoverBand: (business as any)?.turnoverBand ?? "<25m"
+  }));
 
   const goNext = () => {
     if (step < steps.length - 1) setStep((s) => s + 1);
@@ -47,8 +47,10 @@ export default function OnboardingPage() {
 
   const handleSubmit = async () => {
     setLoading(true);
-    updateBusiness(business.id, form);
-    const result = await evaluateEligibility(business.id);
+    if (business?.id) {
+      updateBusiness(business.id, form);
+      await evaluateEligibility(business.id);
+    }
     setLoading(false);
     router.push("/app/dashboard?from=onboarding");
   };
