@@ -15,8 +15,10 @@ export interface CreateBusinessInput {
 }
 
 export async function getBusinesses(): Promise<Business[]> {
-  const response = await api.get<{ items: Business[] }>("/businesses");
-  return response.items || [];
+  // Backend returns an array; older clients expected `{ items }`.
+  const response = await api.get<any>("/businesses");
+  if (Array.isArray(response)) return response as Business[];
+  return (response?.items as Business[]) || [];
 }
 
 export async function getBusiness(id: string): Promise<Business> {

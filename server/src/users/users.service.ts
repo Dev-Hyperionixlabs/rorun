@@ -45,6 +45,25 @@ export class UsersService {
     return user;
   }
 
+  /**
+   * Lightweight lookup used by auth guards/strategies.
+   * Intentionally avoids selecting every column + heavy relations so:
+   * - Guard checks stay fast
+   * - Schema drift (e.g. newly added columns) is less likely to crash auth middleware
+   */
+  async findAuthUser(id: string) {
+    return this.prisma.user.findUnique({
+      where: { id },
+      select: {
+        id: true,
+        phone: true,
+        email: true,
+        name: true,
+        languagePref: true,
+      },
+    });
+  }
+
   async findByPhone(phone: string) {
     return this.prisma.user.findUnique({
       where: { phone },

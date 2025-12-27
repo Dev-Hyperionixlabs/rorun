@@ -519,10 +519,32 @@ export class AuthService {
   }
 
   async validateUser(userId: string): Promise<any> {
-    const user = await this.usersService.findOne(userId);
-    if (!user) {
-      throw new UnauthorizedException();
+    try {
+      // Use lightweight lookup to avoid pulling relations / selecting every column.
+      const user = await this.usersService.findAuthUser(userId);
+      if (!user) {
+        // Invalid token or user deleted
+        return null;
+      }
+      return user;
+    } catch (err: any) {
+      // If the DB schema is out of date, auth middleware should not crash with a 500.
+      const msg = String(err?.message || err).toLowerCase();
+      if (msg.includes('passwordhash') || msg.includes('column') || err?.code === 'P2022') {
+        throw new HttpException(
+          {
+            code: 'DB_SCHEMA_MISSING_COLUMN',
+            message:
+              'Authentication is temporarily unavailable because the database schema is out of date. Please run migrations and redeploy.',
+          },
+          HttpStatus.SERVICE_UNAVAILABLE,
+        );
+      }
+      console.error('[AuthService.validateUser] Unexpected error:', err);
+      throw new HttpException(
+        { code: 'AUTH_UNAVAILABLE', message: 'Authentication is temporarily unavailable. Please try again shortly.' },
+        HttpStatus.SERVICE_UNAVAILABLE,
+      );
     }
-    return user;
   }
 }
