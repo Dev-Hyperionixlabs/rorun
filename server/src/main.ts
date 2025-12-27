@@ -22,10 +22,30 @@ async function bootstrap() {
   );
 
   // Enable CORS
-  const allowedOrigins = process.env.ALLOWED_ORIGINS?.split(',') || [
+  // NOTE: Render runs on Linux and CORS must explicitly allow the production web origin(s).
+  // Also, if ALLOWED_ORIGINS is set, we *append* defaults instead of replacing them so
+  // production domains don't get accidentally dropped.
+  const envOrigins = (process.env.ALLOWED_ORIGINS || '')
+    .split(',')
+    .map((s) => s.trim())
+    .filter(Boolean);
+
+  const defaultOrigins = [
     'http://localhost:3000',
     'http://localhost:3001',
+    // Production web domains
+    'https://rorun.ng',
+    'https://www.rorun.ng',
+    // Common Vercel production domain (if used)
+    'https://rorun.vercel.app',
   ];
+
+  const extra = [
+    process.env.WEB_BASE_URL,
+    process.env.ADMIN_BASE_URL,
+  ].filter(Boolean) as string[];
+
+  const allowedOrigins = Array.from(new Set([...defaultOrigins, ...extra, ...envOrigins]));
 
   app.enableCors({
     origin: (origin, callback) => {

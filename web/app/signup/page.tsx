@@ -1,10 +1,41 @@
+"use client";
+
 import Link from "next/link";
+import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { AuthCard } from "@/components/auth-card";
 import { PublicShell } from "@/components/public/PublicShell";
 
 export default function SignupPage() {
+  const router = useRouter();
+  const [name, setName] = useState("");
+  const [email, setEmail] = useState("");
+
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem("rorun_signup_draft_v1");
+      if (!raw) return;
+      const parsed = JSON.parse(raw) as { name?: string; email?: string };
+      if (parsed?.name) setName(parsed.name);
+      if (parsed?.email) setEmail(parsed.email);
+    } catch {
+      // ignore
+    }
+  }, []);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(
+        "rorun_signup_draft_v1",
+        JSON.stringify({ name, email })
+      );
+    } catch {
+      // ignore
+    }
+  }, [name, email]);
+
   return (
     <PublicShell
       rightNav={
@@ -28,22 +59,38 @@ export default function SignupPage() {
             </>
           }
         >
-          <form className="space-y-4">
+          <form
+            className="space-y-4"
+            onSubmit={(e) => {
+              e.preventDefault();
+              router.push("/onboarding");
+            }}
+          >
             <div className="space-y-1 text-sm">
               <label className="text-sm font-medium text-slate-800">Name</label>
-              <Input placeholder="Your name" />
+              <Input
+                placeholder="Your name"
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+              />
             </div>
             <div className="space-y-1 text-sm">
               <label className="text-sm font-medium text-slate-800">
                 Work email (optional)
               </label>
-              <Input type="email" placeholder="you@business.com" />
+              <Input
+                type="email"
+                placeholder="you@business.com"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+              />
             </div>
-            <Link href="/onboarding">
-              <Button className="mt-2 w-full rounded-full py-2.5 text-sm font-semibold">
-                Continue to business setup
-              </Button>
-            </Link>
+            <Button
+              type="submit"
+              className="mt-2 w-full rounded-full py-2.5 text-sm font-semibold"
+            >
+              Continue to business setup
+            </Button>
           </form>
         </AuthCard>
       </main>

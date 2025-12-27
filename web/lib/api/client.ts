@@ -4,8 +4,10 @@ import { getStoredAuthToken } from "../auth-token";
 import { hardResetSession } from "../session";
 
 // Single source of truth for API base URL
+const DEV_FALLBACK_API = "http://localhost:3001";
 export const API_BASE =
-  process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001";
+  process.env.NEXT_PUBLIC_API_URL ||
+  (process.env.NODE_ENV === "development" ? DEV_FALLBACK_API : "");
 const API_TOKEN = process.env.NEXT_PUBLIC_API_TOKEN;
 
 // For historical helpers that relied on API_URL
@@ -46,6 +48,12 @@ export async function apiRequest<T = any>(
   endpoint: string,
   options: RequestOptions = {}
 ): Promise<T> {
+  if (!API_URL) {
+    throw new ApiError(
+      0,
+      "API URL is not configured. Set NEXT_PUBLIC_API_URL in your environment."
+    );
+  }
   const { skipAuth = false, ...fetchOptions } = options;
 
   const headers: Record<string, string> = {

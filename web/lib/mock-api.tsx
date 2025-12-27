@@ -181,7 +181,7 @@ export const MockApiProvider: React.FC<{ children: React.ReactNode }> = ({ child
           user: null,
           businesses: [],
           currentBusinessId: null,
-          error: `Can't reach the API at ${baseUrl}. Please start the server (default: http://localhost:3001) and retry.`,
+          error: `Can't reach the API at ${baseUrl}. Please check the API is running and that CORS allows this site, then retry.`,
         }));
         return;
       }

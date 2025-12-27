@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import Image from "next/image";
 import { Button } from "@/components/ui/button";
@@ -23,22 +23,57 @@ export default function OnboardingPage() {
   const router = useRouter();
   const { businesses, updateBusiness, evaluateEligibility } = useMockApi();
   const business = businesses[0];
-  const [step, setStep] = useState(0);
+  const [step, setStep] = useState(() => {
+    if (typeof window === "undefined") return 0;
+    try {
+      const raw = localStorage.getItem("rorun_onboarding_draft_v1");
+      if (!raw) return 0;
+      const parsed = JSON.parse(raw) as { step?: number };
+      return typeof parsed.step === "number" ? parsed.step : 0;
+    } catch {
+      return 0;
+    }
+  });
   const [loading, setLoading] = useState(false);
 
   const isSeedBusiness = business?.name?.trim() === "Demo Ventures";
 
-  const [form, setForm] = useState(() => ({
-    name: isSeedBusiness ? "" : business?.name ?? "",
-    role: (isSeedBusiness ? "" : (business?.role as BusinessRole)) as BusinessRole | "",
-    legalForm: (isSeedBusiness ? "" : (business as any)?.legalForm) as any,
-    sector: isSeedBusiness ? "" : business?.sector ?? "",
-    state: isSeedBusiness ? "" : business?.state ?? "",
-    hasCAC: isSeedBusiness ? false : business?.hasCAC ?? false,
-    hasTIN: isSeedBusiness ? false : business?.hasTIN ?? false,
-    vatRegistered: isSeedBusiness ? false : business?.vatRegistered ?? false,
-    turnoverBand: (isSeedBusiness ? "" : (business as any)?.turnoverBand) as any,
-  }));
+  const [form, setForm] = useState(() => {
+    if (typeof window !== "undefined") {
+      try {
+        const raw = localStorage.getItem("rorun_onboarding_draft_v1");
+        if (raw) {
+          const parsed = JSON.parse(raw) as any;
+          if (parsed?.form) return parsed.form;
+        }
+      } catch {
+        // ignore
+      }
+    }
+    return {
+      name: isSeedBusiness ? "" : business?.name ?? "",
+      role: (isSeedBusiness ? "" : (business?.role as BusinessRole)) as BusinessRole | "",
+      legalForm: (isSeedBusiness ? "" : (business as any)?.legalForm) as any,
+      sector: isSeedBusiness ? "" : business?.sector ?? "",
+      state: isSeedBusiness ? "" : business?.state ?? "",
+      hasCAC: isSeedBusiness ? false : business?.hasCAC ?? false,
+      hasTIN: isSeedBusiness ? false : business?.hasTIN ?? false,
+      vatRegistered: isSeedBusiness ? false : business?.vatRegistered ?? false,
+      turnoverBand: (isSeedBusiness ? "" : (business as any)?.turnoverBand) as any,
+    };
+  });
+
+  // Persist draft so Back / refresh doesn't wipe the onboarding info.
+  useEffect(() => {
+    try {
+      localStorage.setItem(
+        "rorun_onboarding_draft_v1",
+        JSON.stringify({ step, form })
+      );
+    } catch {
+      // ignore
+    }
+  }, [step, form]);
 
   const canContinue =
     (step === 0 && form.name.trim().length > 0 && !!form.role) ||
@@ -72,6 +107,12 @@ export default function OnboardingPage() {
       await evaluateEligibility(business.id);
     }
     setLoading(false);
+    try {
+      localStorage.removeItem("rorun_onboarding_draft_v1");
+      localStorage.removeItem("rorun_signup_draft_v1");
+    } catch {
+      // ignore
+    }
     router.push("/app/dashboard?from=onboarding");
   };
 
