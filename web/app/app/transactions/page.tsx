@@ -7,14 +7,15 @@ import { Button } from "@/components/ui/button";
 import { ImportWizard } from "@/components/import-wizard";
 import { MonoConnectButton } from "@/components/bank/MonoConnectButton";
 import { BankConnectionsPanel } from "@/components/bank/BankConnectionsPanel";
-import { FeatureGate } from "@/components/feature-gate";
-import { useFeatures } from "@/hooks/use-features";
 import { getTransactions, Transaction } from "@/lib/api/transactions";
 import { useToast } from "@/components/ui/toast";
-import { Upload, Lock } from "lucide-react";
+import { Upload } from "lucide-react";
 import { getBusinesses } from "@/lib/api/businesses";
 import { ErrorState, useSlowLoading } from "@/components/ui/page-state";
 import { useMockApi as useMockData } from "@/lib/mock-api";
+import { useMockApi } from "@/lib/mock-api";
+import { RequireAccess } from "@/components/RequireAccess";
+import { canAccess } from "@/lib/entitlements";
 
 export default function TransactionsPage() {
   return (
@@ -37,7 +38,7 @@ function TransactionsPageInner() {
   const [loadError, setLoadError] = useState<string | null>(null);
   const [showImportWizard, setShowImportWizard] = useState(false);
   const [refreshKey, setRefreshKey] = useState(0);
-  const { hasFeature } = useFeatures(business?.id || null);
+  const { currentPlanId } = useMockApi();
   const slow = useSlowLoading(loading);
 
   useEffect(() => {
@@ -184,21 +185,14 @@ function TransactionsPageInner() {
           <Upload className="mr-1.5 h-4 w-4" />
             Upload statement
           </Button>
-          <FeatureGate
+          <RequireAccess
+            planId={currentPlanId}
             feature="bank_connect"
-            businessId={business.id}
-            fallback={
-              <Button
-                onClick={() => {
-                  window.location.href = "/app/settings?tab=plan";
-                }}
-                className="rounded-full border border-emerald-600 bg-white text-sm font-semibold text-emerald-700 hover:bg-emerald-50"
-              >
-                <Lock className="mr-1.5 h-4 w-4" />
-                Upgrade to connect bank
-        </Button>
-            }
-            showUpgrade={false}
+            lockedCopy={{
+              title: "Connect bank",
+              description: "Bank sync requires Business plan or higher.",
+              cta: "Upgrade",
+            }}
           >
             <MonoConnectButton
               businessId={business.id}
@@ -206,7 +200,7 @@ function TransactionsPageInner() {
                 setRefreshKey((k) => k + 1);
               }}
             />
-          </FeatureGate>
+          </RequireAccess>
         </div>
       </div>
 
@@ -240,48 +234,26 @@ function TransactionsPageInner() {
           <div className="border-t border-slate-100 pt-4">
             <div className="flex items-start gap-4">
               <div className="flex-1">
-                <p className="text-sm font-medium text-slate-900 mb-1">
-                  Connect your bank
-                </p>
+                <p className="text-sm font-medium text-slate-900 mb-1">Connect your bank</p>
                 <p className="text-xs text-slate-500">
                   Automatically sync transactions from your bank account. Available for Business and Accountant plans.
                 </p>
               </div>
-              <FeatureGate
-                feature="bank_connect"
-                businessId={business.id}
-                fallback={
-                  <Button
-                    size="sm"
-                    onClick={() => {
-                      window.location.href = "/app/settings?tab=plan";
-                    }}
-                    className="rounded-full bg-slate-100 text-xs font-semibold text-slate-700 hover:bg-slate-200"
-                  >
-                    <Lock className="mr-1.5 h-3 w-3" />
-                    Upgrade
-                  </Button>
-                }
-                showUpgrade={false}
-              >
+              <RequireAccess planId={currentPlanId} feature="bank_connect">
                 <MonoConnectButton
                   businessId={business.id}
                   onSuccess={() => {
                     setRefreshKey((k) => k + 1);
                   }}
                 />
-              </FeatureGate>
+              </RequireAccess>
             </div>
           </div>
         </CardContent>
       </Card>
 
       {/* Bank Connections Panel */}
-      {hasFeature("bank_connect") && (
-        <BankConnectionsPanel
-          businessId={business.id}
-        />
-      )}
+      {canAccess(currentPlanId, "bank_connect") && <BankConnectionsPanel businessId={business.id} />}
 
       {showImportWizard && (
         <ImportWizard

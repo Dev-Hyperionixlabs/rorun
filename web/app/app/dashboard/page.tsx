@@ -15,6 +15,8 @@ import Link from "next/link";
 import { ErrorState } from "@/components/ui/page-state";
 import { getEligibilityResult, runEligibilityCheck } from "@/lib/api/eligibility";
 import { useToast } from "@/components/ui/toast";
+import { AddTransactionModal } from "@/components/AddTransactionModal";
+import { canAccess } from "@/lib/entitlements";
 
 export default function DashboardPage() {
   return (
@@ -31,6 +33,8 @@ function DashboardContent() {
   const { businesses, transactions, alerts, currentPlanId, currentBusinessId, loading, error, refresh } = useMockApi();
   const [openIssuesCount, setOpenIssuesCount] = useState<number>(0);
   const [taxProfile, setTaxProfile] = useState<any>(null);
+  const [addTxOpen, setAddTxOpen] = useState(false);
+  const [addTxType, setAddTxType] = useState<"income" | "expense">("income");
 
   const businessId = currentBusinessId || businesses[0]?.id || null;
   const business = (businessId ? businesses.find((b) => b.id === businessId) : null) || businesses[0] || null;
@@ -111,7 +115,7 @@ function DashboardContent() {
   const hasEligibility = !!taxProfile;
 
   const fromOnboarding = searchParams.get("from") === "onboarding";
-  const canGeneratePack = currentPlanId !== "free";
+  const canGeneratePack = canAccess(currentPlanId, "yearEndFilingPack");
 
   const handleGeneratePack = async () => {
     setPackError(null);
@@ -124,6 +128,15 @@ function DashboardContent() {
 
   return (
     <div className="space-y-4">
+      {businessId && (
+        <AddTransactionModal
+          open={addTxOpen}
+          onClose={() => setAddTxOpen(false)}
+          businessId={businessId}
+          type={addTxType}
+          onCreated={() => refresh()}
+        />
+      )}
       {fromOnboarding && (
         <div className="rounded-lg bg-emerald-50 px-4 py-3 text-xs text-emerald-900">
           <span className="font-semibold">Nice one! </span>
@@ -264,10 +277,23 @@ function DashboardContent() {
               </span>
             </div>
             <div className="mt-3 flex flex-wrap gap-2">
-              <Button size="sm" onClick={() => router.push("/app/transactions/new?type=income")}>
+              <Button
+                size="sm"
+                onClick={() => {
+                  setAddTxType("income");
+                  setAddTxOpen(true);
+                }}
+              >
                 Add income
               </Button>
-              <Button size="sm" variant="secondary" onClick={() => router.push("/app/transactions/new?type=expense")}>
+              <Button
+                size="sm"
+                variant="secondary"
+                onClick={() => {
+                  setAddTxType("expense");
+                  setAddTxOpen(true);
+                }}
+              >
                 Add expense
               </Button>
               <Button size="sm" variant="ghost" onClick={() => router.push("/app/transactions")}>
@@ -341,7 +367,7 @@ function DashboardContent() {
               <Button
                 variant="secondary"
                 className="rounded-full border-emerald-600 text-sm font-semibold text-emerald-700"
-                onClick={() => (window.location.href = "/app/pricing")}
+                onClick={() => (window.location.href = "/app/settings?tab=plan")}
               >
                 Upgrade to unlock
               </Button>
@@ -404,9 +430,11 @@ function DashboardContent() {
               Once you have at least a few months of transactions, Rorun can
               generate a clean pack for your accountant or FIRS.
             </p>
-            <Button size="sm" variant="secondary" className="w-full">
-              Preview this year&apos;s summary
-            </Button>
+            <Link href="/app/summary" className="block">
+              <Button size="sm" variant="secondary" className="w-full">
+                Preview this year&apos;s summary
+              </Button>
+            </Link>
           </CardContent>
         </Card>
       </div>

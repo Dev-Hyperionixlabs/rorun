@@ -6,18 +6,18 @@ import { Button } from "@/components/ui/button";
 import { useMockApi } from "@/lib/mock-api";
 import { FilingPackCard } from "@/components/filing-pack-card";
 import { getBusinesses } from "@/lib/api/businesses";
-import { useFeatures } from "@/hooks/use-features";
 import { FileText, Lock } from "lucide-react";
 import Link from "next/link";
+import { canAccess } from "@/lib/entitlements";
+import { API_BASE, authHeaders } from "@/lib/api/client";
 
 export default function SummaryPage() {
-  const { yearSummaries, businesses, loading, error, refresh, currentBusinessId } = useMockApi();
+  const { yearSummaries, businesses, loading, error, refresh, currentBusinessId, currentPlanId } = useMockApi();
   const summary = yearSummaries[0];
   const businessIdFromCtx = currentBusinessId || businesses[0]?.id || null;
   const business = (businessIdFromCtx ? businesses.find((b) => b.id === businessIdFromCtx) : null) || businesses[0] || null;
   const year = new Date().getFullYear();
   const [businessId, setBusinessId] = useState<string | null>(null);
-  const { hasFeature } = useFeatures(businessId);
 
   useEffect(() => {
     loadBusiness();
@@ -92,7 +92,7 @@ export default function SummaryPage() {
 
       {businessId && (
         <>
-          {hasFeature("yearEndFilingPack") ? (
+          {canAccess(currentPlanId, "yearEndFilingPack") ? (
             <Card>
               <CardContent className="p-4">
                 <div className="flex items-center justify-between">
@@ -126,7 +126,7 @@ export default function SummaryPage() {
                       Requires Basic plan or higher
                     </p>
                   </div>
-                  <Link href="/app/pricing">
+                  <Link href="/app/settings?tab=plan">
                     <Button variant="secondary" size="sm" className="text-xs">
                       Upgrade
                     </Button>
@@ -135,6 +135,47 @@ export default function SummaryPage() {
               </CardContent>
             </Card>
           )}
+
+          <Card className="bg-white">
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm font-semibold text-slate-800">Exports</CardTitle>
+            </CardHeader>
+            <CardContent className="flex items-center justify-between gap-3">
+              <p className="text-sm text-slate-600">Download your transactions as CSV.</p>
+              {canAccess(currentPlanId, "exportTransactions") ? (
+                <Button
+                  size="sm"
+                  variant="secondary"
+                  onClick={async () => {
+                    if (!API_BASE) throw new Error("API is not configured.");
+                    // Trigger backend CSV export and download.
+                    const controller = new AbortController();
+                    const timeout = setTimeout(() => controller.abort(), 12_000);
+                    const res = await fetch(`${API_BASE}/businesses/${businessId}/transactions/export`, {
+                      headers: authHeaders(),
+                      signal: controller.signal,
+                    }).finally(() => clearTimeout(timeout));
+                    if (!res.ok) throw new Error("Export failed");
+                    const blob = await res.blob();
+                    const a = document.createElement("a");
+                    a.href = URL.createObjectURL(blob);
+                    a.download = `transactions-${businessId}-${year}.csv`;
+                    a.click();
+                    URL.revokeObjectURL(a.href);
+                  }}
+                >
+                  Export CSV
+                </Button>
+              ) : (
+                <Link href="/app/settings?tab=plan">
+                  <Button size="sm" variant="secondary" className="text-xs">
+                    Upgrade
+                  </Button>
+                </Link>
+              )}
+            </CardContent>
+          </Card>
+
           <FilingPackCard businessId={businessId} taxYear={year} />
         </>
       )}

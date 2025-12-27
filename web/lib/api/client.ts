@@ -42,6 +42,7 @@ export class ApiError extends Error {
 
 interface RequestOptions extends RequestInit {
   skipAuth?: boolean;
+  timeoutMs?: number;
 }
 
 export async function apiRequest<T = any>(
@@ -49,12 +50,9 @@ export async function apiRequest<T = any>(
   options: RequestOptions = {}
 ): Promise<T> {
   if (!API_URL) {
-    throw new ApiError(
-      0,
-      "API URL is not configured. Set NEXT_PUBLIC_API_URL in your environment."
-    );
+    throw new ApiError(0, "API is not configured.", "API_NOT_CONFIGURED");
   }
-  const { skipAuth = false, ...fetchOptions } = options;
+  const { skipAuth = false, timeoutMs = 12_000, ...fetchOptions } = options;
 
   const headers: Record<string, string> = {
     "Content-Type": "application/json",
@@ -77,10 +75,13 @@ export async function apiRequest<T = any>(
       console.debug("[API]", fetchOptions.method || "GET", url);
     }
 
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), timeoutMs);
     const res = await fetch(url, {
       ...fetchOptions,
       headers,
-    });
+      signal: controller.signal,
+    }).finally(() => clearTimeout(timeout));
 
     // Handle 401 - redirect to login
     if (res.status === 401) {
@@ -132,11 +133,10 @@ export async function apiRequest<T = any>(
       console.debug("[API] network failure", { url, error });
     }
 
-    const message =
-      (error as any)?.name === "AbortError"
-        ? "Request timed out. Please try again."
-        : `Network error. Can't reach the API (${API_BASE}). Check NEXT_PUBLIC_API_URL and that the server is running.`;
-    throw new ApiError(0, message);
+    if ((error as any)?.name === "AbortError") {
+      throw new ApiError(0, "Request timed out. Please try again.", "TIMEOUT");
+    }
+    throw new ApiError(0, "Network error. Can’t reach the API. Please try again.", "NETWORK_ERROR");
   }
 }
 

@@ -8,8 +8,9 @@ import { useEffect, useMemo, useState } from "react";
 import { useMockApi } from "@/lib/mock-api";
 import { Button } from "./ui/button";
 import { TaxSafetyBadge } from "./tax-safety-badge";
-import { logoutToHome } from "@/lib/session";
+import { hardResetSession } from "@/lib/session";
 import { BrandLink } from "./BrandLink";
+import { logout } from "@/lib/api/auth";
 
 const navItems = [
   { href: "/app/dashboard", label: "Dashboard" },
@@ -50,11 +51,16 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   }
 
   if (error) {
+    const hint =
+      error.includes("API is not configured") || error.includes("API_NOT_CONFIGURED")
+        ? "API is not configured."
+        : null;
     return (
       <div className="min-h-screen bg-slate-50 text-slate-900 flex items-center justify-center px-4">
         <div className="w-full max-w-md rounded-2xl border border-slate-200 bg-white p-6 shadow-card">
           <p className="text-sm font-semibold text-slate-900">API unreachable</p>
           <p className="mt-2 text-sm text-slate-600">{error}</p>
+          {hint && <p className="mt-2 text-xs text-slate-500">{hint}</p>}
           <div className="mt-4 flex items-center gap-3">
             <Button onClick={() => refresh()}>Retry</Button>
             <Link className="text-sm text-slate-600 hover:text-slate-900" href="/">
@@ -187,7 +193,17 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                   <button
                     type="button"
                     className="w-full text-left px-4 py-3 text-sm text-rose-700 hover:bg-rose-50"
-                    onClick={() => logoutToHome()}
+                    onClick={async () => {
+                      setShowProfileMenu(false);
+                      try {
+                        await logout();
+                      } catch {
+                        // ignore; we'll still clear local session
+                      } finally {
+                        hardResetSession();
+                        window.location.href = "/login";
+                      }
+                    }}
                   >
                     Log out
                   </button>
