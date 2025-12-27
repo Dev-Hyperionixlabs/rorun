@@ -8,6 +8,7 @@ import { Input } from "@/components/ui/input";
 import { AuthCard } from "@/components/auth-card";
 import { PublicShell } from "@/components/public/PublicShell";
 import { signup } from "@/lib/api/auth";
+import { ApiError } from "@/lib/api/client";
 
 export default function SignupPage() {
   const router = useRouter();
@@ -21,10 +22,9 @@ export default function SignupPage() {
     try {
       const raw = localStorage.getItem("rorun_signup_draft_v1");
       if (!raw) return;
-      const parsed = JSON.parse(raw) as { name?: string; email?: string; password?: string };
+      const parsed = JSON.parse(raw) as { name?: string; email?: string };
       if (parsed?.name) setName(parsed.name);
       if (parsed?.email) setEmail(parsed.email);
-      if (parsed?.password) setPassword(parsed.password);
     } catch {
       // ignore
     }
@@ -34,12 +34,12 @@ export default function SignupPage() {
     try {
       localStorage.setItem(
         "rorun_signup_draft_v1",
-        JSON.stringify({ name, email, password })
+        JSON.stringify({ name, email })
       );
     } catch {
       // ignore
     }
-  }, [name, email, password]);
+  }, [name, email]);
 
   return (
     <PublicShell
@@ -74,7 +74,13 @@ export default function SignupPage() {
                 await signup({ email, password, name: name || undefined });
                 router.push("/onboarding");
               } catch (err: any) {
-                setError(err?.message || "Sign up failed");
+                if (err instanceof ApiError && err.code === "WEAK_PASSWORD") {
+                  setError("Password is too short. Use at least 8 characters.");
+                } else if (err instanceof ApiError && err.code === "EMAIL_IN_USE") {
+                  setError("That email already has an account. Try logging in instead.");
+                } else {
+                  setError(err?.message || "Couldn’t create your account. Please try again.");
+                }
               } finally {
                 setSubmitting(false);
               }

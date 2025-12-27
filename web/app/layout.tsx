@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import "./globals.css";
 import { MockApiProvider } from "@/lib/mock-api";
 import { InteractionAudit } from "@/components/dev/InteractionAudit";
+import { ToastProvider } from "@/components/ui/toast";
 
 export const metadata: Metadata = {
   title: "Rorun – Tax Safety for Nigerian SMEs",
@@ -21,8 +22,10 @@ export default function RootLayout({
   return (
     <html lang="en">
       <body>
-        <MockApiProvider>{children}</MockApiProvider>
-        <InteractionAudit />
+        <ToastProvider>
+          <MockApiProvider>{children}</MockApiProvider>
+          <InteractionAudit />
+        </ToastProvider>
       </body>
     </html>
   );

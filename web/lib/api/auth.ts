@@ -56,6 +56,27 @@ export async function signup(args: {
   };
 }
 
+export async function requestPasswordReset(email: string): Promise<{ ok: true }> {
+  await api.post(
+    "/auth/request-password-reset",
+    { email },
+    { skipAuth: true }
+  );
+  return { ok: true };
+}
+
+export async function resetPassword(args: {
+  token: string;
+  password: string;
+}): Promise<{ ok: true }> {
+  await api.post(
+    "/auth/reset-password",
+    { token: args.token, password: args.password },
+    { skipAuth: true }
+  );
+  return { ok: true };
+}
+
 export async function logout(): Promise<void> {
   try {
     await api.post("/auth/logout");

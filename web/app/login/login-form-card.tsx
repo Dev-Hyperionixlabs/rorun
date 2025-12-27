@@ -7,6 +7,7 @@ import { AuthCard } from "@/components/auth-card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { login } from "@/lib/api/auth";
+import { ApiError } from "@/lib/api/client";
 
 export function LoginFormCard({ reason }: { reason?: string }) {
   const router = useRouter();
@@ -23,7 +24,11 @@ export function LoginFormCard({ reason }: { reason?: string }) {
       await login({ email, password });
       router.push("/app/dashboard");
     } catch (e: any) {
-      setError(e?.message || "Login failed");
+      if (e instanceof ApiError && e.status === 401) {
+        setError("Incorrect email or password.");
+      } else {
+        setError(e?.message || "Couldn’t log you in. Please try again.");
+      }
     } finally {
       setIsSubmitting(false);
     }
@@ -92,6 +97,11 @@ export function LoginFormCard({ reason }: { reason?: string }) {
         >
           {isSubmitting ? "Please wait..." : "Continue"}
         </Button>
+        <div className="text-center text-xs">
+          <Link href="/forgot-password" className="text-slate-500 hover:text-slate-800">
+            Forgot password?
+          </Link>
+        </div>
       </form>
     </AuthCard>
   );
