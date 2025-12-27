@@ -9,7 +9,7 @@ export interface CreateTransactionInput {
   businessId: string;
   type: "income" | "expense";
   amount: number;
-  description: string;
+  description?: string;
   category?: string;
   date: string;
   paymentMethod?: string;
