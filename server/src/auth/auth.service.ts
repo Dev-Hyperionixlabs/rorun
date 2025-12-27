@@ -43,55 +43,12 @@ export class AuthService {
     ip?: string,
     userAgent?: string,
   ): Promise<{ ok: true }> {
-    // Generate 6-digit OTP
-    const otp = crypto.randomInt(100000, 999999).toString();
-    const expiresAt = new Date(Date.now() + this.OTP_TTL_MINUTES * 60 * 1000);
-
-    // Per-phone rate limiting (deterministic)
-    const windowStart = new Date(Date.now() - this.OTP_RATE_LIMIT_WINDOW_MS);
-    const recentCount = await this.prisma.otpChallenge.count({
-      where: {
-        phone,
-        createdAt: { gte: windowStart },
-      },
+    // OTP is temporarily disabled in production.
+    // Keep method to preserve wiring, but return a deterministic error.
+    throw new BadRequestException({
+      code: 'OTP_DISABLED',
+      message: 'OTP login is temporarily disabled. Use /auth/login.',
     });
-    if (recentCount >= this.OTP_RATE_LIMIT_MAX) {
-      throw new BadRequestException({
-        code: 'OTP_RATE_LIMITED',
-        message: 'Too many OTP requests. Please try again later.',
-      });
-    }
-
-    await this.prisma.otpChallenge.create({
-      data: {
-        phone,
-        codeHash: this.hashOtp(otp),
-        expiresAt,
-        attempts: 0,
-        maxAttempts: this.OTP_MAX_ATTEMPTS,
-      },
-    });
-
-    try {
-      // Prefer new provider abstraction
-      await this.otpService.sendOtp(phone, otp, this.OTP_TTL_MINUTES);
-    } catch (error) {
-      // Fallback to existing SMS service (kept for compatibility)
-      await this.smsService.sendOtp(phone, otp);
-    }
-
-    await this.auditService.createAuditEvent({
-      businessId: null,
-      actorUserId: null,
-      action: 'auth.otp.request',
-      entityType: 'OtpChallenge',
-      entityId: phone,
-      metaJson: { phone },
-      ip: ip ? String(ip) : null,
-      userAgent: userAgent ? String(userAgent) : null,
-    });
-
-    return { ok: true };
   }
 
   async verifyOtp(
@@ -100,75 +57,38 @@ export class AuthService {
     ip?: string,
     userAgent?: string,
   ): Promise<{ access_token: string; user: any }> {
-    const challenge = await this.prisma.otpChallenge.findFirst({
-      where: {
-        phone,
-        consumedAt: null,
-      },
-      orderBy: { createdAt: 'desc' },
-    });
+    throw new UnauthorizedException('OTP login is temporarily disabled. Use /auth/login.');
+  }
 
-    if (!challenge || challenge.expiresAt.getTime() < Date.now()) {
-      await this.auditService.createAuditEvent({
-        businessId: null,
-        actorUserId: null,
-        action: 'auth.otp.verify.fail',
-        entityType: 'OtpChallenge',
-        entityId: phone,
-        metaJson: { phone, reason: 'expired_or_missing' },
-        ip: ip ? String(ip) : null,
-        userAgent: userAgent ? String(userAgent) : null,
-      });
-      throw new UnauthorizedException('Invalid or expired OTP');
-    }
-
-    if (challenge.attempts >= challenge.maxAttempts) {
-      throw new UnauthorizedException('OTP attempts exceeded');
-    }
-
-    const ok = this.verifyOtpHash(otp, challenge.codeHash);
-    if (!ok) {
-      await this.prisma.otpChallenge.update({
-        where: { id: challenge.id },
-        data: { attempts: { increment: 1 } },
-      });
-      await this.auditService.createAuditEvent({
-        businessId: null,
-        actorUserId: null,
-        action: 'auth.otp.verify.fail',
-        entityType: 'OtpChallenge',
-        entityId: phone,
-        metaJson: { phone, reason: 'invalid_code' },
-        ip: ip ? String(ip) : null,
-        userAgent: userAgent ? String(userAgent) : null,
-      });
-      throw new UnauthorizedException('Invalid OTP');
-    }
-
-    // Consume challenge and invalidate older ones
-    await this.prisma.otpChallenge.update({
-      where: { id: challenge.id },
-      data: { consumedAt: new Date() },
-    });
-    await this.prisma.otpChallenge.updateMany({
-      where: { phone, id: { not: challenge.id }, consumedAt: null },
-      data: { consumedAt: new Date() },
-    });
-
-    // Get or create user
+  /**
+   * TEMPORARY: Passwordless login without OTP.
+   * Creates the user if needed, updates profile fields, and returns a JWT.
+   * This is intended to unblock production while OTP providers are being wired.
+   */
+  async loginWithoutOtp(
+    phone: string,
+    name?: string,
+    email?: string,
+    ip?: string,
+    userAgent?: string,
+  ): Promise<{ access_token: string; accessToken: string; user: any }> {
     let user = await this.usersService.findByPhone(phone);
     if (!user) {
-      user = await this.usersService.create({ phone });
+      user = await this.usersService.create({ phone, name, email });
+    } else if ((name && !user.name) || (email && !user.email)) {
+      user = await this.usersService.update(user.id, {
+        ...(name && !user.name ? { name } : {}),
+        ...(email && !user.email ? { email } : {}),
+      } as any);
     }
 
-    // Generate JWT token
     const payload = { sub: user.id, phone: user.phone, jti: crypto.randomUUID() };
     const access_token = this.jwtService.sign(payload);
 
     await this.auditService.createAuditEvent({
       businessId: null,
       actorUserId: user.id,
-      action: 'auth.otp.verify.success',
+      action: 'auth.login.no_otp',
       entityType: 'User',
       entityId: user.id,
       metaJson: { phone },
@@ -178,6 +98,8 @@ export class AuthService {
 
     return {
       access_token,
+      // convenience for web clients that expect camelCase
+      accessToken: access_token,
       user: {
         id: user.id,
         phone: user.phone,

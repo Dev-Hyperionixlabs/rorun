@@ -6,13 +6,11 @@ import { useState } from "react";
 import { AuthCard } from "@/components/auth-card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { requestOtp, verifyOtp } from "@/lib/api/auth";
+import { login } from "@/lib/api/auth";
 
 export function LoginFormCard({ reason }: { reason?: string }) {
   const router = useRouter();
   const [phone, setPhone] = useState("");
-  const [otp, setOtp] = useState("");
-  const [step, setStep] = useState<"phone" | "otp">("phone");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -21,14 +19,10 @@ export function LoginFormCard({ reason }: { reason?: string }) {
     setIsSubmitting(true);
     setError(null);
     try {
-      if (step === "phone") {
-        await requestOtp(phone);
-        setStep("otp");
-        return;
-      }
-
-      await verifyOtp(phone, otp);
+      await login({ phone });
       router.push("/app/dashboard");
+    } catch (e: any) {
+      setError(e?.message || "Login failed");
     } finally {
       setIsSubmitting(false);
     }
@@ -37,7 +31,7 @@ export function LoginFormCard({ reason }: { reason?: string }) {
   return (
     <AuthCard
       title="Log in to Rorun"
-      subtitle="Use your email and password to continue."
+      subtitle="Use your phone number to continue."
       footer={
         <>
           New to Rorun?{" "}
@@ -76,64 +70,13 @@ export function LoginFormCard({ reason }: { reason?: string }) {
           />
         </div>
 
-        {step === "otp" && (
-          <div className="space-y-1 text-sm">
-            <label className="text-sm font-medium text-slate-800">OTP</label>
-            <Input
-              inputMode="numeric"
-              placeholder="123456"
-              value={otp}
-              onChange={(e) => setOtp(e.target.value)}
-              required
-            />
-            <p className="text-[11px] text-slate-500">
-              Enter the 6-digit code sent to your phone.
-            </p>
-          </div>
-        )}
-
         <Button
           type="submit"
           disabled={isSubmitting}
           className="mt-2 w-full rounded-full py-2.5 text-sm font-semibold"
         >
-          {isSubmitting
-            ? "Please wait..."
-            : step === "phone"
-              ? "Send OTP"
-              : "Verify & continue"}
+          {isSubmitting ? "Please wait..." : "Continue"}
         </Button>
-
-        {step === "otp" && (
-          <div className="flex items-center justify-between pt-1 text-xs">
-            <button
-              type="button"
-              className="text-slate-500 hover:text-slate-800"
-              onClick={() => setStep("phone")}
-              disabled={isSubmitting}
-            >
-              Change phone
-            </button>
-            <button
-              type="button"
-              className="text-brand hover:opacity-80"
-              onClick={async () => {
-                setIsSubmitting(true);
-                setError(null);
-                try {
-                  await requestOtp(phone);
-                } catch (e: any) {
-                  setError(e?.message || "Failed to resend OTP");
-                } finally {
-                  setIsSubmitting(false);
-                }
-              }}
-              disabled={isSubmitting}
-            >
-              Resend OTP
-            </button>
-          </div>
-        )}
       </form>
     </AuthCard>
   );

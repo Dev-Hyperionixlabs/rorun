@@ -3,31 +3,25 @@
 import { api } from "./client";
 import { storeAuthToken, clearAuthToken } from "../auth-token";
 
-export interface RequestOtpResponse {
-  ok: true;
-}
-
-export interface VerifyOtpResponse {
+export interface LoginResponse {
   accessToken: string;
   user: {
     id: string;
     phone: string;
     name?: string;
     email?: string;
+    languagePref?: string;
   };
 }
 
-export async function requestOtp(phone: string): Promise<RequestOtpResponse> {
-  return api.post("/auth/request-otp", { phone }, { skipAuth: true });
-}
-
-export async function verifyOtp(
-  phone: string,
-  code: string
-): Promise<VerifyOtpResponse> {
+export async function login(args: {
+  phone: string;
+  name?: string;
+  email?: string;
+}): Promise<LoginResponse> {
   const response = await api.post<any>(
-    "/auth/verify-otp",
-    { phone, code },
+    "/auth/login",
+    { phone: args.phone, name: args.name, email: args.email },
     { skipAuth: true }
   );
 
@@ -52,6 +46,16 @@ export async function logout(): Promise<void> {
 }
 
 export async function getCurrentUser() {
-  return api.get("/auth/me");
+  const u = await api.get<any>("/auth/me");
+  return {
+    id: u.id,
+    phone: u.phone,
+    email: u.email || "",
+    name: u.name || "",
+    currentBusinessId: null,
+    preferredLanguage: (u.languagePref === "pidgin" ? "pidgin" : "en") as
+      | "en"
+      | "pidgin",
+  };
 }
 

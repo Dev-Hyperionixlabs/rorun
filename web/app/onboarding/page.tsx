@@ -10,6 +10,7 @@ import { useMockApi } from "@/lib/mock-api";
 import { BusinessRole, NIGERIAN_STATES } from "@/lib/types";
 import { Select } from "@/components/ui/select";
 import { BrandLink } from "@/components/BrandLink";
+import { createBusiness } from "@/lib/api/businesses";
 
 const steps = [
   "Basics",
@@ -33,7 +34,7 @@ type OnboardingFormState = {
 
 export default function OnboardingPage() {
   const router = useRouter();
-  const { businesses, updateBusiness, evaluateEligibility } = useMockApi();
+  const { businesses, updateBusiness, evaluateEligibility, refresh } = useMockApi();
   const business = businesses[0];
   const [step, setStep] = useState(() => {
     if (typeof window === "undefined") return 0;
@@ -111,16 +112,40 @@ export default function OnboardingPage() {
 
   const handleSubmit = async () => {
     setLoading(true);
-    if (business?.id) {
-      updateBusiness(business.id, {
-        ...form,
-        role: (form.role || undefined) as any,
-        legalForm: (form.legalForm || undefined) as any,
-        turnoverBand: (form.turnoverBand || undefined) as any,
-      });
-      await evaluateEligibility(business.id);
+    try {
+      let businessId = business?.id;
+
+      if (!businessId) {
+        const created = await createBusiness({
+          name: form.name,
+          legalForm: String(form.legalForm || ""),
+          sector: form.sector || undefined,
+          state: form.state || undefined,
+          vatRegistered: !!form.vatRegistered,
+          estimatedTurnoverBand: form.turnoverBand ? String(form.turnoverBand) : undefined,
+        });
+        businessId = created.id;
+      } else {
+        await updateBusiness(businessId, {
+          name: form.name,
+          legalForm: (form.legalForm || undefined) as any,
+          sector: form.sector || undefined,
+          state: form.state || undefined,
+          vatRegistered: !!form.vatRegistered,
+          estimatedTurnoverBand: form.turnoverBand ? String(form.turnoverBand) : undefined,
+        } as any);
+      }
+
+      if (businessId) {
+        await evaluateEligibility(businessId);
+      }
+
+      // Ensure app state is fresh (business list, alerts, etc.)
+      // so dashboard doesn't immediately think there's no workspace.
+      await refresh();
+    } finally {
+      setLoading(false);
     }
-    setLoading(false);
     try {
       localStorage.removeItem("rorun_onboarding_draft_v1");
       localStorage.removeItem("rorun_signup_draft_v1");

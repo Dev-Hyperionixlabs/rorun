@@ -7,19 +7,24 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { AuthCard } from "@/components/auth-card";
 import { PublicShell } from "@/components/public/PublicShell";
+import { login } from "@/lib/api/auth";
 
 export default function SignupPage() {
   const router = useRouter();
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
+  const [phone, setPhone] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     try {
       const raw = localStorage.getItem("rorun_signup_draft_v1");
       if (!raw) return;
-      const parsed = JSON.parse(raw) as { name?: string; email?: string };
+      const parsed = JSON.parse(raw) as { name?: string; email?: string; phone?: string };
       if (parsed?.name) setName(parsed.name);
       if (parsed?.email) setEmail(parsed.email);
+      if (parsed?.phone) setPhone(parsed.phone);
     } catch {
       // ignore
     }
@@ -29,12 +34,12 @@ export default function SignupPage() {
     try {
       localStorage.setItem(
         "rorun_signup_draft_v1",
-        JSON.stringify({ name, email })
+        JSON.stringify({ name, email, phone })
       );
     } catch {
       // ignore
     }
-  }, [name, email]);
+  }, [name, email, phone]);
 
   return (
     <PublicShell
@@ -61,17 +66,42 @@ export default function SignupPage() {
         >
           <form
             className="space-y-4"
-            onSubmit={(e) => {
+            onSubmit={async (e) => {
               e.preventDefault();
-              router.push("/onboarding");
+              setSubmitting(true);
+              setError(null);
+              try {
+                await login({ phone, name: name || undefined, email: email || undefined });
+                router.push("/onboarding");
+              } catch (err: any) {
+                setError(err?.message || "Sign up failed");
+              } finally {
+                setSubmitting(false);
+              }
             }}
           >
+            {error && (
+              <div className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-xs text-rose-800">
+                {error}
+              </div>
+            )}
             <div className="space-y-1 text-sm">
               <label className="text-sm font-medium text-slate-800">Name</label>
               <Input
                 placeholder="Your name"
                 value={name}
                 onChange={(e) => setName(e.target.value)}
+              />
+            </div>
+            <div className="space-y-1 text-sm">
+              <label className="text-sm font-medium text-slate-800">
+                Phone number
+              </label>
+              <Input
+                placeholder="+2348012345678"
+                value={phone}
+                onChange={(e) => setPhone(e.target.value)}
+                required
               />
             </div>
             <div className="space-y-1 text-sm">
@@ -87,9 +117,10 @@ export default function SignupPage() {
             </div>
             <Button
               type="submit"
+              disabled={submitting}
               className="mt-2 w-full rounded-full py-2.5 text-sm font-semibold"
             >
-              Continue to business setup
+              {submitting ? "Creating account…" : "Continue to business setup"}
             </Button>
           </form>
         </AuthCard>
