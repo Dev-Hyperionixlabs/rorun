@@ -5,9 +5,11 @@ import { PaymentsService } from './payments.service';
 import { PaymentsWebhookService } from './payments.webhook.service';
 import { PaystackService } from './paystack.service';
 import { PrismaModule } from '../prisma/prisma.module';
+import { BusinessesModule } from '../businesses/businesses.module';
 
 @Module({
-  imports: [PrismaModule],
+  // Needed for BusinessRoleGuard -> BusinessesService (used in PaymentsController)
+  imports: [PrismaModule, BusinessesModule],
   controllers: [PaymentsController, PaymentsWebhookController],
   providers: [PaymentsService, PaymentsWebhookService, PaystackService],
   exports: [PaymentsService],
