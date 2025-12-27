@@ -13,34 +13,66 @@ export class ReportingService {
   ) {}
 
   async getYearlySummary(businessId: string, userId: string, year: number) {
+    // If any DB table is missing (transactions/taxProfile), avoid 500 and return an empty summary
     await this.businessesService.findOne(businessId, userId);
 
     const startDate = new Date(year, 0, 1);
     const endDate = new Date(year, 11, 31, 23, 59, 59);
 
-    const [transactions, business, taxProfile] = await Promise.all([
-      this.prisma.transaction.findMany({
-        where: {
-          businessId,
-          date: {
-            gte: startDate,
-            lte: endDate,
-          },
-        },
-        include: {
-          category: true,
-        },
-      }),
-      this.businessesService.findOne(businessId, userId),
-      this.prisma.taxProfile.findUnique({
-        where: {
-          businessId_taxYear: {
+    let transactions: any[] = [];
+    let business: any = null;
+    let taxProfile: any = null;
+
+    try {
+      [transactions, business, taxProfile] = await Promise.all([
+        this.prisma.transaction.findMany({
+          where: {
             businessId,
-            taxYear: year,
+            date: {
+              gte: startDate,
+              lte: endDate,
+            },
           },
+          include: {
+            category: true,
+          },
+        }),
+        this.businessesService.findOne(businessId, userId),
+        this.prisma.taxProfile.findUnique({
+          where: {
+            businessId_taxYear: {
+              businessId,
+              taxYear: year,
+            },
+          },
+        }),
+      ]);
+    } catch (err: any) {
+      console.error('[ReportingService.getYearlySummary] Failed, returning empty summary:', err?.message);
+      // best-effort: fetch minimal business info so UI can render name
+      try {
+        business = business || (await this.businessesService.findOne(businessId, userId));
+      } catch {
+        business = { name: 'Workspace', legalForm: null, tin: null };
+      }
+      return {
+        year,
+        business: {
+          name: business?.name || 'Workspace',
+          legalForm: business?.legalForm || null,
+          tin: business?.tin || null,
         },
-      }),
-    ]);
+        summary: {
+          totalIncome: 0,
+          totalExpenses: 0,
+          estimatedProfit: 0,
+          transactionsCount: 0,
+          documentsCount: 0,
+        },
+        expensesByCategory: {},
+        taxProfile: null,
+      };
+    }
 
     const income = transactions
       .filter((t) => t.type === 'income')

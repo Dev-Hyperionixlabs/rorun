@@ -23,52 +23,57 @@ export class RecommendedActionsService {
     userId: string,
     taxYear: number,
   ): Promise<RecommendedAction[]> {
-    // ownership guard
-    await this.businessesService.findOne(businessId, userId);
+    try {
+      // ownership guard
+      await this.businessesService.findOne(businessId, userId);
 
-    const subscription = await this.subscriptionsService.getActiveSubscription(userId, businessId);
-    const planId = (subscription?.plan?.id?.toLowerCase?.() as PlanId) ?? 'free';
-    const score = await this.taxSafetyService.getTaxSafetyScore(businessId, userId, taxYear);
+      const subscription = await this.subscriptionsService.getActiveSubscription(userId, businessId);
+      const planId = (subscription?.plan?.id?.toLowerCase?.() as PlanId) ?? 'free';
+      const score = await this.taxSafetyService.getTaxSafetyScore(businessId, userId, taxYear);
 
-    const [missingMonths, highValueWithoutDocs, obligations, latestPack, actionStates] = await Promise.all([
-      this.findMonthsWithNoTransactions(businessId, taxYear),
-      this.findHighValueTransactionsWithoutDocs(businessId, taxYear, 5),
-      this.findObligations(businessId, taxYear),
-      this.filingPacksService.getLatestFilingPack(businessId, userId, taxYear),
-      this.getActionStates(businessId, taxYear),
-    ]);
+      const [missingMonths, highValueWithoutDocs, obligations, latestPack, actionStates] = await Promise.all([
+        this.findMonthsWithNoTransactions(businessId, taxYear),
+        this.findHighValueTransactionsWithoutDocs(businessId, taxYear, 5),
+        this.findObligations(businessId, taxYear),
+        this.filingPacksService.getLatestFilingPack(businessId, userId, taxYear),
+        this.getActionStates(businessId, taxYear),
+      ]);
 
-    const actions = this.buildActionsFromContext({
-      businessId,
-      taxYear,
-      score,
-      planId,
-      missingMonths,
-      highValueWithoutDocs,
-      obligations,
-      latestPack,
-    });
+      const actions = this.buildActionsFromContext({
+        businessId,
+        taxYear,
+        score,
+        planId,
+        missingMonths,
+        highValueWithoutDocs,
+        obligations,
+        latestPack,
+      });
 
-    // Filter out completed/dismissed actions and add status
-    const actionStateMap = new Map<string, any>();
-    for (const s of actionStates as any[]) {
-      actionStateMap.set(`${s.actionType}-${businessId}-${taxYear}`, s);
+      // Filter out completed/dismissed actions and add status
+      const actionStateMap = new Map<string, any>();
+      for (const s of actionStates as any[]) {
+        actionStateMap.set(`${s.actionType}-${businessId}-${taxYear}`, s);
+      }
+
+      return actions
+        .map((action) => {
+          const state: any = actionStateMap.get(action.id);
+          if (state?.status === 'completed' || state?.status === 'dismissed') {
+            return null;
+          }
+          return {
+            ...action,
+            status: state?.status || 'open',
+            completedAt: state?.completedAt || null,
+            dismissedAt: state?.dismissedAt || null,
+          };
+        })
+        .filter((a) => a !== null) as any;
+    } catch (err: any) {
+      console.error('[RecommendedActionsService.getRecommendedActions] Failed, returning empty list:', err?.message);
+      return [];
     }
-
-    return actions
-      .map((action) => {
-        const state: any = actionStateMap.get(action.id);
-        if (state?.status === 'completed' || state?.status === 'dismissed') {
-          return null;
-        }
-        return {
-          ...action,
-          status: state?.status || 'open',
-          completedAt: state?.completedAt || null,
-          dismissedAt: state?.dismissedAt || null,
-        };
-      })
-      .filter((a) => a !== null) as any;
   }
 
   async completeAction(
