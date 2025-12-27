@@ -8,6 +8,7 @@ import {
   Headers,
   UnauthorizedException,
   Query,
+  BadRequestException,
 } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiHeader } from '@nestjs/swagger';
 import { AdminService } from './admin.service';
@@ -38,6 +39,21 @@ export class AdminController {
   async getUsers(@Headers() headers: any) {
     this.validateAdmin(headers);
     return this.adminService.getUsers();
+  }
+
+  @Post('users/:id/reset-password')
+  @ApiHeader({ name: 'x-admin-key', required: true })
+  @ApiOperation({ summary: 'Reset a user password (admin only)' })
+  async resetUserPassword(
+    @Headers() headers: any,
+    @Param('id') id: string,
+    @Body('password') password: string,
+  ) {
+    this.validateAdmin(headers);
+    if (!password || password.length < 8) {
+      throw new BadRequestException('Password must be at least 8 characters');
+    }
+    return this.adminService.resetUserPassword(id, password);
   }
 
   @Get('tax-rules')

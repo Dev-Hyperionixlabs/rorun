@@ -68,3 +68,22 @@ export class EmailLoginDto {
   @IsNotEmpty()
   password: string;
 }
+
+export class RequestPasswordResetDto {
+  @ApiProperty({ example: 'teddy@company.com' })
+  @IsEmail()
+  @IsNotEmpty()
+  email: string;
+}
+
+export class ResetPasswordDto {
+  @ApiProperty({ example: 'reset-token-from-email' })
+  @IsString()
+  @IsNotEmpty()
+  token: string;
+
+  @ApiProperty({ example: 'NewStrongPassword123' })
+  @IsString()
+  @IsNotEmpty()
+  password: string;
+}

@@ -5,6 +5,7 @@ import { TaxSafetyService } from '../tax-safety/tax-safety.service';
 import { JwtService } from '@nestjs/jwt';
 import { ReportingService } from '../reporting/reporting.service';
 import { BankService } from '../bank/bank.service';
+import * as bcrypt from 'bcrypt';
 
 @Injectable()
 export class AdminService {
@@ -51,6 +52,18 @@ export class AdminService {
         email: true,
         createdAt: true,
       },
+    });
+  }
+
+  async resetUserPassword(userId: string, newPassword: string) {
+    if (!newPassword || newPassword.length < 8) {
+      throw new Error('Password must be at least 8 characters');
+    }
+    const passwordHash = await bcrypt.hash(newPassword, 10);
+    return (this.prisma as any).user.update({
+      where: { id: userId },
+      data: { passwordHash },
+      select: { id: true, email: true, name: true },
     });
   }
 

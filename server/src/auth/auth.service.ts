@@ -7,6 +7,8 @@ import { PrismaService } from '../prisma/prisma.service';
 import { OtpService } from '../otp/otp.service';
 import { AuditService } from '../audit/audit.service';
 import * as bcrypt from 'bcrypt';
+import { EmailProvider } from '../notifications/providers/email.provider';
+import { ConfigService } from '@nestjs/config';
 
 @Injectable()
 export class AuthService {
@@ -22,6 +24,8 @@ export class AuthService {
     private prisma: PrismaService,
     private otpService: OtpService,
     private auditService: AuditService,
+    private emailProvider: EmailProvider,
+    private configService: ConfigService,
   ) {}
 
   private hashOtp(code: string): string {
@@ -108,21 +112,33 @@ export class AuthService {
     const existing = await prismaAny.user.findUnique({
       where: { email: normalizedEmail },
     });
-    if (existing) {
-      throw new BadRequestException({
-        code: 'EMAIL_IN_USE',
-        message: 'That email is already in use. Please log in instead.',
-      });
-    }
 
     const passwordHash = await bcrypt.hash(password, 10);
-    const user = await prismaAny.user.create({
-      data: {
-        email: normalizedEmail,
-        name: name || null,
-        passwordHash,
-      },
-    });
+
+    // If a user exists but has no passwordHash yet (legacy/pre-auth record),
+    // allow them to "claim" the account by setting a password.
+    const user = existing
+      ? existing.passwordHash
+        ? (() => {
+            throw new BadRequestException({
+              code: 'EMAIL_IN_USE',
+              message: 'That email is already in use. Please log in instead.',
+            });
+          })()
+        : await prismaAny.user.update({
+            where: { id: existing.id },
+            data: {
+              name: existing.name || name || null,
+              passwordHash,
+            },
+          })
+      : await prismaAny.user.create({
+          data: {
+            email: normalizedEmail,
+            name: name || null,
+            passwordHash,
+          },
+        });
 
     const access_token = await this.signJwt(user);
 
@@ -194,6 +210,101 @@ export class AuthService {
         languagePref: user.languagePref,
       },
     };
+  }
+
+  async requestPasswordReset(email: string, ip?: string, userAgent?: string): Promise<void> {
+    const prismaAny = this.prisma as any;
+    const normalizedEmail = email.trim().toLowerCase();
+
+    const user = await prismaAny.user.findUnique({ where: { email: normalizedEmail } });
+    // Always return ok to avoid email enumeration.
+    if (!user) return;
+
+    // Issue a short-lived token for password reset.
+    const token = this.jwtService.sign(
+      { sub: user.id, purpose: 'pwd_reset' },
+      { expiresIn: '15m' },
+    );
+
+    const webBaseUrl =
+      this.configService.get<string>('WEB_BASE_URL') ||
+      this.configService.get<string>('PUBLIC_WEB_BASE_URL') ||
+      'http://localhost:3000';
+
+    const resetUrl = `${webBaseUrl.replace(/\/$/, '')}/reset-password?token=${encodeURIComponent(token)}`;
+
+    await this.emailProvider.send({
+      to: normalizedEmail,
+      subject: 'Reset your Rorun password',
+      html: `
+        <p>We received a request to reset your Rorun password.</p>
+        <p><a href="${resetUrl}">Click here to reset your password</a></p>
+        <p>This link expires in 15 minutes. If you didn’t request this, you can ignore this email.</p>
+      `,
+      text: `Reset your password: ${resetUrl}`,
+    });
+
+    await this.auditService.createAuditEvent({
+      businessId: null,
+      actorUserId: user.id,
+      action: 'auth.password_reset.request',
+      entityType: 'User',
+      entityId: user.id,
+      metaJson: { email: normalizedEmail },
+      ip: ip ? String(ip) : null,
+      userAgent: userAgent ? String(userAgent) : null,
+    });
+  }
+
+  async resetPassword(
+    token: string,
+    newPassword: string,
+    ip?: string,
+    userAgent?: string,
+  ): Promise<{ ok: true }> {
+    if (newPassword.length < 8) {
+      throw new BadRequestException({
+        code: 'WEAK_PASSWORD',
+        message: 'Password must be at least 8 characters.',
+      });
+    }
+
+    let payload: any;
+    try {
+      payload = this.jwtService.verify(token);
+    } catch {
+      throw new BadRequestException({
+        code: 'RESET_TOKEN_INVALID',
+        message: 'Reset link is invalid or expired. Please request a new one.',
+      });
+    }
+
+    if (!payload?.sub || payload?.purpose !== 'pwd_reset') {
+      throw new BadRequestException({
+        code: 'RESET_TOKEN_INVALID',
+        message: 'Reset link is invalid or expired. Please request a new one.',
+      });
+    }
+
+    const prismaAny = this.prisma as any;
+    const passwordHash = await bcrypt.hash(newPassword, 10);
+    await prismaAny.user.update({
+      where: { id: payload.sub },
+      data: { passwordHash },
+    });
+
+    await this.auditService.createAuditEvent({
+      businessId: null,
+      actorUserId: payload.sub,
+      action: 'auth.password_reset.complete',
+      entityType: 'User',
+      entityId: payload.sub,
+      metaJson: {},
+      ip: ip ? String(ip) : null,
+      userAgent: userAgent ? String(userAgent) : null,
+    });
+
+    return { ok: true };
   }
 
   /**

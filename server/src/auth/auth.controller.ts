@@ -2,7 +2,7 @@ import { Controller, Post, Body, UseGuards, Get, Request, HttpException, HttpSta
 import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
 import { AuthService } from './auth.service';
 import { JwtAuthGuard } from './guards/jwt-auth.guard';
-import { RequestOtpDto, VerifyOtpDto, SignupDto, EmailLoginDto } from './dto/auth.dto';
+import { RequestOtpDto, VerifyOtpDto, SignupDto, EmailLoginDto, RequestPasswordResetDto, ResetPasswordDto } from './dto/auth.dto';
 import { Throttle } from '@nestjs/throttler';
 
 @ApiTags('auth')
@@ -26,6 +26,25 @@ export class AuthController {
     const ip = req.ip || req.headers['x-forwarded-for'] || req.connection?.remoteAddress;
     const userAgent = req.headers['user-agent'];
     return this.authService.signupWithPassword(dto.email, dto.password, dto.name, ip, userAgent);
+  }
+
+  @Post('request-password-reset')
+  @ApiOperation({ summary: 'Request a password reset email' })
+  @Throttle({ default: { limit: 10, ttl: 60_000 } })
+  async requestPasswordReset(@Body() dto: RequestPasswordResetDto, @Request() req) {
+    const ip = req.ip || req.headers['x-forwarded-for'] || req.connection?.remoteAddress;
+    const userAgent = req.headers['user-agent'];
+    await this.authService.requestPasswordReset(dto.email, ip, userAgent);
+    return { ok: true };
+  }
+
+  @Post('reset-password')
+  @ApiOperation({ summary: 'Reset password using token' })
+  @Throttle({ default: { limit: 10, ttl: 60_000 } })
+  async resetPassword(@Body() dto: ResetPasswordDto, @Request() req) {
+    const ip = req.ip || req.headers['x-forwarded-for'] || req.connection?.remoteAddress;
+    const userAgent = req.headers['user-agent'];
+    return this.authService.resetPassword(dto.token, dto.password, ip, userAgent);
   }
 
   @Post('request-otp')

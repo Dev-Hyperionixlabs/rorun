@@ -10,6 +10,7 @@ import { SmsService } from './sms.service';
 import { PrismaModule } from '../prisma/prisma.module';
 import { OtpModule } from '../otp/otp.module';
 import { AuditModule } from '../audit/audit.module';
+import { EmailProvider } from '../notifications/providers/email.provider';
 
 @Module({
   imports: [
@@ -30,7 +31,7 @@ import { AuditModule } from '../audit/audit.module';
     }),
   ],
   controllers: [AuthController],
-  providers: [AuthService, JwtStrategy, SmsService],
+  providers: [AuthService, JwtStrategy, SmsService, EmailProvider],
   exports: [AuthService],
 })
 export class AuthModule {}
