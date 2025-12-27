@@ -58,6 +58,16 @@ function DashboardContent() {
     loadBusiness();
   }, []);
 
+  useEffect(() => {
+    if (process.env.NODE_ENV === "production") return;
+    // DEV assertion: this section should never render twice.
+    const count = document.querySelectorAll("[data-section='recommended-actions']").length;
+    if (count > 1) {
+      // eslint-disable-next-line no-console
+      console.warn(`[DEV] RecommendedActionsSection rendered ${count} times (expected 1)`);
+    }
+  }, []);
+
   if (!business) {
     return <div className="text-sm text-slate-500">Loading dashboard…</div>;
   }
@@ -313,7 +323,7 @@ function DashboardContent() {
         </CardContent>
       </Card>
 
-      <RecommendedActionsSection />
+      {/* (intentionally rendered once) */}
 
       <div className="grid gap-4 md:grid-cols-3">
         <Card className="md:col-span-2">

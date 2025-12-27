@@ -55,7 +55,7 @@ export function RecommendedActionsSection() {
     
     // Handle guided flows
     if (actionType === "RUN_ELIGIBILITY_CHECK") {
-      router.push("/app/onboarding");
+      router.push("/onboarding");
       return;
     }
     if (actionType === "ADD_RECORDS_FOR_MISSING_MONTHS") {
@@ -96,7 +96,7 @@ export function RecommendedActionsSection() {
   };
 
   return (
-    <section className="mt-6 space-y-3">
+    <section data-section="recommended-actions" className="mt-6 space-y-3">
       <div className="flex items-center justify-between">
         <h2 className="text-sm font-semibold text-slate-900">Do these 3 things next</h2>
       </div>

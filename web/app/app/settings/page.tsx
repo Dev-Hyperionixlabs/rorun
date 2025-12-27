@@ -14,6 +14,7 @@ import clsx from "clsx";
 import { getCurrentPlan, setCurrentPlanApi } from "@/lib/api/plan";
 import { updateProfileApi } from "@/lib/api/profile";
 import { updateBusinessApi } from "@/lib/api/business";
+import { logoutToHome } from "@/lib/session";
 import {
   getNotificationPreferences,
   updateNotificationPreference,
@@ -326,6 +327,12 @@ function ProfileSettingsSection() {
           {saving ? "Saving..." : "Save profile"}
         </Button>
         {error && <p className="text-xs font-semibold text-rose-600">{error}</p>}
+
+        <div className="pt-2 border-t border-slate-100">
+          <Button variant="secondary" onClick={() => logoutToHome()}>
+            Log out
+          </Button>
+        </div>
       </CardContent>
     </Card>
   );

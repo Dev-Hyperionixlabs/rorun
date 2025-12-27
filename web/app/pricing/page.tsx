@@ -236,7 +236,7 @@ function PlanSelectButton({ planKey }: { planKey: string }) {
 
   const handleClick = () => {
     // Check if user is logged in
-    const token = typeof window !== "undefined" ? localStorage.getItem("auth_token") : null;
+    const token = typeof window !== "undefined" ? localStorage.getItem("rorun_token") : null;
     
     if (token) {
       // User is logged in - redirect to settings

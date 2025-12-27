@@ -2,9 +2,9 @@
 
 import { ReactNode } from "react";
 import { useFeatures } from "@/hooks/use-features";
-import { PlanFeatureKey } from "@/lib/plans";
+import { minimumPlanForFeature, PlanFeatureKey } from "@/lib/plans";
 import { useMockApi } from "@/lib/mock-api";
-import { Button } from "./ui/button";
+import { LockedFeature } from "./LockedFeature";
 
 interface FeatureGateProps {
   feature: PlanFeatureKey;
@@ -21,8 +21,9 @@ export function FeatureGate({
   fallback,
   showUpgrade = true,
 }: FeatureGateProps) {
-  const { hasFeature, loading } = useFeatures(businessId);
-  const { currentPlanId } = useMockApi();
+  const { hasFeature, loading, error } = useFeatures(businessId);
+  useMockApi(); // preserve existing app-state side effects/assumptions
+  const requiredPlan = minimumPlanForFeature(feature);
 
   if (loading) {
     return <div className="text-sm text-slate-500">Loading...</div>;
@@ -35,20 +36,14 @@ export function FeatureGate({
 
     if (showUpgrade) {
       return (
-        <div className="rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm">
-          <p className="font-semibold text-amber-900 mb-2">Feature locked</p>
-          <p className="text-amber-700 mb-3">
-            This feature requires a {currentPlanId === "free" ? "Basic" : "higher"} plan.
-          </p>
-          <Button
-            size="sm"
-            onClick={() => {
-              window.location.href = "/app/settings?tab=plan";
-            }}
-          >
-            Upgrade plan
-          </Button>
-        </div>
+        <LockedFeature
+          requiredPlan={requiredPlan}
+          details={
+            error
+              ? `We couldn't verify your plan entitlements (${error}). Please retry, or upgrade if needed.`
+              : undefined
+          }
+        />
       );
     }
 

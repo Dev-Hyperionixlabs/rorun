@@ -1,6 +1,7 @@
 "use client";
 
-import { getStoredAuthToken, clearAuthToken } from "../auth-token";
+import { getStoredAuthToken } from "../auth-token";
+import { hardResetSession } from "../session";
 
 // Single source of truth for API base URL
 export const API_BASE =
@@ -62,6 +63,12 @@ export async function apiRequest<T = any>(
   const url = `${API_URL}${endpoint}`;
 
   try {
+    const debug = process.env.NEXT_PUBLIC_API_DEBUG === "true";
+    if (debug) {
+      // eslint-disable-next-line no-console
+      console.debug("[API]", fetchOptions.method || "GET", url);
+    }
+
     const res = await fetch(url, {
       ...fetchOptions,
       headers,
@@ -69,9 +76,9 @@ export async function apiRequest<T = any>(
 
     // Handle 401 - redirect to login
     if (res.status === 401) {
-      clearAuthToken();
+      hardResetSession();
       if (typeof window !== "undefined") {
-        window.location.href = "/login";
+        window.location.href = "/login?reason=session_expired";
       }
       throw new ApiError(401, "Session expired. Please log in again.");
     }
@@ -103,7 +110,17 @@ export async function apiRequest<T = any>(
     if (error instanceof ApiError) throw error;
 
     // Network error or other fetch failure
-    throw new ApiError(0, "Network error. Please check your connection.");
+    const debug = process.env.NEXT_PUBLIC_API_DEBUG === "true";
+    if (debug) {
+      // eslint-disable-next-line no-console
+      console.debug("[API] network failure", { url, error });
+    }
+
+    const message =
+      (error as any)?.name === "AbortError"
+        ? "Request timed out. Please try again."
+        : `Network error. Can't reach the API (${API_BASE}). Check NEXT_PUBLIC_API_URL and that the server is running.`;
+    throw new ApiError(0, message);
   }
 }
 

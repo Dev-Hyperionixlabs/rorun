@@ -31,7 +31,7 @@ import {
 import { getYearSummary } from "./api/summary";
 import { updateProfileApi } from "./api/profile";
 import { getDocuments as fetchDocuments, uploadDocument } from "./api/documents";
-import { ApiError } from "./api/client";
+import { ApiError, API_BASE } from "./api/client";
 
 type Document = import("./api/documents").Document;
 
@@ -80,6 +80,25 @@ interface AppContextValue extends AppState {
 
 const AppContext = createContext<AppContextValue | null>(null);
 
+async function checkApiHealth(baseUrl: string, timeoutMs = 2500): Promise<boolean> {
+  const base = baseUrl.replace(/\/$/, "");
+  const ctrl = new AbortController();
+  const timeout = setTimeout(() => ctrl.abort(), timeoutMs);
+
+  try {
+    const res = await fetch(`${base}/health`, {
+      method: "GET",
+      cache: "no-store",
+      signal: ctrl.signal,
+    });
+    return res.ok;
+  } catch {
+    return false;
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
 async function safeApi<T>(fn: () => Promise<T>, fallback: T): Promise<T> {
   try {
     return await fn();
@@ -116,8 +135,59 @@ export const MockApiProvider: React.FC<{ children: React.ReactNode }> = ({ child
   const load = async () => {
     setState((s) => ({ ...s, loading: true, error: undefined }));
     try {
+      const baseUrl = API_BASE;
+      const healthy = await checkApiHealth(baseUrl);
+      if (!healthy) {
+        // DEV-only escape hatch: allow UI to boot without API for interaction testing / offline dev.
+        // IMPORTANT: this must never be enabled by default.
+        if (process.env.NEXT_PUBLIC_USE_MOCK_API === "true") {
+          const demoBusinessId = "local-demo-business";
+          setState((s) => ({
+            ...s,
+            loading: false,
+            error: undefined,
+            user: {
+              id: "local-demo-user",
+              phone: "+2340000000000",
+              name: "Local Demo",
+              email: "local@demo",
+              preferredLanguage: "en",
+              currentBusinessId: demoBusinessId,
+            } as any,
+            businesses: [
+              {
+                id: demoBusinessId,
+                name: "Local Demo Workspace",
+                state: "Lagos",
+                legalForm: "sole_proprietorship",
+                sector: "general",
+                turnoverBand: "<25m",
+              } as any,
+            ],
+            currentBusinessId: demoBusinessId,
+            alerts: [],
+            transactions: [],
+            documents: [],
+            knowledge: [],
+            currentPlanId: "free",
+            yearSummaries: [emptySummary(new Date().getFullYear())],
+          }));
+          return;
+        }
+
+        setState((s) => ({
+          ...s,
+          loading: false,
+          user: null,
+          businesses: [],
+          currentBusinessId: null,
+          error: `Can't reach the API at ${baseUrl}. Please start the server (default: http://localhost:3001) and retry.`,
+        }));
+        return;
+      }
+
       const [user, businesses, knowledge] = await Promise.all([
-        getCurrentUser().catch(() => null),
+        getCurrentUser(),
         getBusinesses().catch(() => []),
         getKnowledgeArticles().catch(() => []),
       ]);
@@ -151,6 +221,19 @@ export const MockApiProvider: React.FC<{ children: React.ReactNode }> = ({ child
         yearSummaries: [summary],
       }));
     } catch (err: any) {
+      // If auth is missing/expired, api client already triggers a redirect to /login.
+      if (err instanceof ApiError && err.status === 401) {
+        setState((s) => ({
+          ...s,
+          loading: false,
+          user: null,
+          businesses: [],
+          currentBusinessId: null,
+          error: undefined,
+        }));
+        return;
+      }
+
       setState((s) => ({
         ...s,
         loading: false,

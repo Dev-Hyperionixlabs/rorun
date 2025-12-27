@@ -2,7 +2,8 @@ import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { StorageService } from '../storage/storage.service';
 import { PDFDocument, rgb, StandardFonts } from 'pdf-lib';
-import * as archiver from 'archiver';
+// NOTE: `archiver` is used only for ZIP exports. We lazy-load it to avoid boot-time
+// crashes in environments where optional dependencies may not be installed.
 
 interface PackSummary {
   year: number;
@@ -448,7 +449,20 @@ export class FilingPackBuilder {
     csvBuffer: Buffer,
   ): Promise<Buffer> {
     return new Promise((resolve, reject) => {
-      const archive = archiver('zip', { zlib: { level: 9 } });
+      let archiverFactory: any;
+      try {
+        // eslint-disable-next-line @typescript-eslint/no-var-requires
+        archiverFactory = require('archiver');
+      } catch (e) {
+        reject(
+          new Error(
+            'ZIP export is not available: missing optional dependency `archiver`. Install it in the server service to enable ZIP exports.',
+          ),
+        );
+        return;
+      }
+
+      const archive = archiverFactory('zip', { zlib: { level: 9 } });
       const chunks: Buffer[] = [];
 
       archive.on('data', (chunk) => {

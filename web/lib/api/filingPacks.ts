@@ -1,4 +1,4 @@
-import { api } from "./client";
+import { api, API_BASE } from "./client";
 
 export interface FilingPack {
   id: string;
@@ -56,8 +56,7 @@ export function getFilingPackDownloadUrl(
   packId: string,
   type: "pdf" | "csv" | "zip"
 ): string {
-  const base = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001";
-  return `${base}/businesses/${businessId}/filing-pack/${packId}/download/${type}`;
+  return `${API_BASE}/businesses/${businessId}/filing-pack/${packId}/download/${type}`;
 }
 
 // Backwards-compatible aliases (used by mock flows)

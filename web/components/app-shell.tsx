@@ -4,10 +4,12 @@ import Link from "next/link";
 import Image from "next/image";
 import { usePathname } from "next/navigation";
 import { Bell, Menu } from "lucide-react";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useMockApi } from "@/lib/mock-api";
 import { Button } from "./ui/button";
 import { TaxSafetyBadge } from "./tax-safety-badge";
+import { logoutToHome } from "@/lib/session";
+import { BrandLink } from "./BrandLink";
 
 const navItems = [
   { href: "/app/dashboard", label: "Dashboard" },
@@ -22,9 +24,10 @@ const navItems = [
 
 export function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
-  const { user, businesses, alerts, loading } = useMockApi();
+  const { user, businesses, alerts, loading, error, refresh } = useMockApi();
   const [navOpen, setNavOpen] = useState(false);
   const [showAlerts, setShowAlerts] = useState(false);
+  const [showProfileMenu, setShowProfileMenu] = useState(false);
 
   // Hooks must be called before any early returns
   const sortedAlerts = useMemo(
@@ -32,10 +35,41 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     [alerts]
   );
 
-  if (loading || !user) {
+  useEffect(() => {
+    if (!loading && !error && !user) {
+      window.location.href = "/login";
+    }
+  }, [loading, error, user]);
+
+  if (loading) {
     return (
       <div className="min-h-screen bg-slate-50 text-slate-900 flex items-center justify-center text-sm text-slate-500">
         Loading your workspace…
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="min-h-screen bg-slate-50 text-slate-900 flex items-center justify-center px-4">
+        <div className="w-full max-w-md rounded-2xl border border-slate-200 bg-white p-6 shadow-card">
+          <p className="text-sm font-semibold text-slate-900">API unreachable</p>
+          <p className="mt-2 text-sm text-slate-600">{error}</p>
+          <div className="mt-4 flex items-center gap-3">
+            <Button onClick={() => refresh()}>Retry</Button>
+            <Link className="text-sm text-slate-600 hover:text-slate-900" href="/">
+              Back to home
+            </Link>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (!user) {
+    return (
+      <div className="min-h-screen bg-slate-50 text-slate-900 flex items-center justify-center text-sm text-slate-500">
+        Redirecting to login…
       </div>
     );
   }
@@ -46,7 +80,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
   return (
     <div className="min-h-screen bg-slate-50 text-slate-900">
-      <header className="border-b border-slate-200 bg-white">
+      <header className="relative z-40 border-b border-slate-200 bg-white">
         <div className="mx-auto flex max-w-5xl items-center justify-between px-4 py-3 md:px-6">
           <div className="flex items-center gap-3">
             <button
@@ -55,7 +89,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             >
               <Menu className="h-5 w-5" />
             </button>
-            <Link href="/app/dashboard" className="flex items-center gap-2">
+            <BrandLink className="flex items-center gap-2">
               <Image
                 src="/logo.png"
                 alt="Rorun"
@@ -66,7 +100,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               />
               <span className="text-sm font-semibold text-slate-800">Rorun</span>
               <span className="hidden text-xs text-slate-400 md:inline">Tax Safety</span>
-            </Link>
+            </BrandLink>
           </div>
 
           <div className="flex items-center gap-4">
@@ -120,11 +154,45 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                 </div>
               </div>
             )}
-            <div className="hidden items-center gap-2 rounded-full bg-slate-100 px-3 py-1.5 text-xs md:flex">
-              <span className="h-6 w-6 rounded-full bg-brand/10 text-[11px] font-semibold text-brand flex items-center justify-center">
-                {user.name.charAt(0)}
-              </span>
-              <span className="truncate max-w-[120px]">{user.name}</span>
+            <div className="relative hidden md:block">
+              <button
+                type="button"
+                aria-label="Open profile menu"
+                data-profile-button="true"
+                className="flex items-center gap-2 rounded-full bg-slate-100 px-3 py-1.5 text-xs hover:bg-slate-200"
+                onClick={() => setShowProfileMenu((v) => !v)}
+              >
+                <span className="h-6 w-6 rounded-full bg-brand/10 text-[11px] font-semibold text-brand flex items-center justify-center">
+                  {user.name.charAt(0)}
+                </span>
+                <span className="truncate max-w-[120px]">{user.name}</span>
+              </button>
+
+              {showProfileMenu && (
+                <div className="absolute right-0 top-12 z-40 w-48 rounded-2xl border border-slate-200 bg-white shadow-xl overflow-hidden">
+                  <Link
+                    className="block px-4 py-3 text-sm text-slate-700 hover:bg-slate-50"
+                    href="/app/settings?tab=account"
+                    onClick={() => setShowProfileMenu(false)}
+                  >
+                    Profile
+                  </Link>
+                  <Link
+                    className="block px-4 py-3 text-sm text-slate-700 hover:bg-slate-50"
+                    href="/app/settings"
+                    onClick={() => setShowProfileMenu(false)}
+                  >
+                    Settings
+                  </Link>
+                  <button
+                    type="button"
+                    className="w-full text-left px-4 py-3 text-sm text-rose-700 hover:bg-rose-50"
+                    onClick={() => logoutToHome()}
+                  >
+                    Log out
+                  </button>
+                </div>
+              )}
             </div>
           </div>
         </div>

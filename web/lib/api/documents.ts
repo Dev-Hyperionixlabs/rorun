@@ -1,8 +1,9 @@
 "use client";
 
 import { getStoredAuthToken } from "../auth-token";
+import { API_BASE } from "./client";
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001";
+const API_URL = API_BASE;
 
 export interface Document {
   id: string;

@@ -8,6 +8,8 @@ import { useToast } from "@/components/ui/toast";
 import { getBusinesses } from "@/lib/api/businesses";
 import { getReviewIssues, rescanReviewIssues, ReviewIssue, ReviewIssueType } from "@/lib/api/review";
 import { Loader2, AlertTriangle, RefreshCw, ChevronRight } from "lucide-react";
+import { ErrorState, useSlowLoading } from "@/components/ui/page-state";
+import { useMockApi as useMockData } from "@/lib/mock-api";
 
 const TABS: Array<{ id: "all" | ReviewIssueType | "high"; label: string }> = [
   { id: "all", label: "All" },
@@ -23,15 +25,37 @@ export default function ReviewPage() {
   const [businessId, setBusinessId] = useState<string | null>(null);
   const [issues, setIssues] = useState<ReviewIssue[]>([]);
   const [loading, setLoading] = useState(true);
+  const [businessError, setBusinessError] = useState<string | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [tab, setTab] = useState<(typeof TABS)[number]["id"]>("all");
   const [rescanning, setRescanning] = useState(false);
   const { addToast } = useToast();
   const taxYear = new Date().getFullYear();
+  const slow = useSlowLoading(loading);
+  const { businesses: mockBusinesses } = useMockData();
 
   useEffect(() => {
     (async () => {
-      const businesses = await getBusinesses();
-      setBusinessId(businesses?.[0]?.id || null);
+      try {
+        if (process.env.NEXT_PUBLIC_USE_MOCK_API === "true" && mockBusinesses?.[0]?.id) {
+          setBusinessId(mockBusinesses[0].id);
+          setBusinessError(null);
+          return;
+        }
+
+        setBusinessError(null);
+        const businesses = await getBusinesses();
+        const id = businesses?.[0]?.id || null;
+        setBusinessId(id);
+        if (!id) {
+          setBusinessError("No workspace found for this account.");
+          setLoading(false);
+        }
+      } catch (e: any) {
+        setBusinessId(null);
+        setBusinessError(e?.message || "Couldn't load your workspace.");
+        setLoading(false);
+      }
     })().catch(() => {});
   }, []);
 
@@ -44,9 +68,11 @@ export default function ReviewPage() {
     if (!businessId) return;
     try {
       setLoading(true);
+      setLoadError(null);
       const data = await getReviewIssues(businessId, { taxYear, status: "open" });
       setIssues(data);
     } catch (e: any) {
+      setLoadError(e?.message || "Please try again later.");
       addToast({
         title: "Failed to load issues",
         description: e?.message || "Please try again later.",
@@ -130,11 +156,31 @@ export default function ReviewPage() {
         ))}
       </div>
 
-      {loading ? (
+      {businessError && (
+        <ErrorState
+          title="Couldn’t load workspace"
+          message={businessError}
+          onRetry={() => window.location.reload()}
+        />
+      )}
+
+      {businessError ? null : loadError ? (
+        <ErrorState title="Couldn’t load issues" message={loadError} onRetry={() => load()} />
+      ) : loading ? (
         <Card>
           <CardContent className="py-6">
             <div className="flex items-center justify-center">
-              <Loader2 className="h-5 w-5 animate-spin text-slate-400" />
+              <div className="flex flex-col items-center gap-2">
+                <Loader2 className="h-5 w-5 animate-spin text-slate-400" />
+                {slow && (
+                  <button
+                    className="text-xs font-medium text-slate-600 hover:text-slate-900"
+                    onClick={() => load()}
+                  >
+                    Still loading… Retry
+                  </button>
+                )}
+              </div>
             </div>
           </CardContent>
         </Card>

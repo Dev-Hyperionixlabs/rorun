@@ -1,6 +1,7 @@
 import Link from "next/link";
 import Image from "next/image";
 import { Button } from "@/components/ui/button";
+import { BrandLink } from "@/components/BrandLink";
 
 export function PublicTopNav({
   right,
@@ -9,7 +10,7 @@ export function PublicTopNav({
 }) {
   return (
     <header className="mx-auto flex w-full max-w-5xl items-center justify-between px-4 py-4 md:px-6">
-      <div className="flex items-center gap-2">
+      <BrandLink className="flex items-center gap-2">
         <Image
           src="/logo.png"
           alt="Rorun"
@@ -19,7 +20,7 @@ export function PublicTopNav({
           priority
         />
         <span className="text-xs text-slate-300">Tax safety for Nigerian SMEs</span>
-      </div>
+      </BrandLink>
 
       {right ?? (
         <nav className="flex items-center gap-3 text-xs">

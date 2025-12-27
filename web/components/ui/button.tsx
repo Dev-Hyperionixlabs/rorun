@@ -35,6 +35,9 @@ export const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
         ref={ref}
         className={clsx(base, variants[variant], sizes[size], className)}
         disabled={disabled || loading}
+        data-ui="Button"
+        data-variant={variant}
+        data-size={size}
         {...props}
       >
         {loading && (

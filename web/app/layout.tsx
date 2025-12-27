@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import "./globals.css";
 import { MockApiProvider } from "@/lib/mock-api";
+import { InteractionAudit } from "@/components/dev/InteractionAudit";
 
 export const metadata: Metadata = {
   title: "Rorun – Tax Safety for Nigerian SMEs",
@@ -21,6 +22,7 @@ export default function RootLayout({
     <html lang="en">
       <body>
         <MockApiProvider>{children}</MockApiProvider>
+        <InteractionAudit />
       </body>
     </html>
   );

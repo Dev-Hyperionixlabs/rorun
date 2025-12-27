@@ -9,6 +9,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { useMockApi } from "@/lib/mock-api";
 import { BusinessRole, NIGERIAN_STATES } from "@/lib/types";
 import { Select } from "@/components/ui/select";
+import { BrandLink } from "@/components/BrandLink";
 
 const steps = [
   "Basics",
@@ -51,7 +52,12 @@ export default function OnboardingPage() {
   };
 
   const goBack = () => {
-    if (step > 0) setStep((s) => s - 1);
+    if (step > 0) {
+      setStep((s) => s - 1);
+      return;
+    }
+    // Step 1: allow user to exit onboarding back to signup
+    router.push("/signup");
   };
 
   const handleSubmit = async () => {
@@ -73,7 +79,7 @@ export default function OnboardingPage() {
     <div className="flex min-h-screen items-center justify-center bg-slate-50 px-4 py-10">
       <Card className="w-full max-w-xl">
         <CardHeader>
-          <div className="flex items-center gap-2 mb-2">
+          <BrandLink className="flex items-center gap-2 mb-2">
             <Image
               src="/logo.png"
               alt="Rorun"
@@ -82,7 +88,7 @@ export default function OnboardingPage() {
               className="h-6 w-auto"
             />
             <span className="text-xs text-slate-400">Onboarding</span>
-          </div>
+          </BrandLink>
           <div>
             <CardTitle className="text-base">
               Let&apos;s understand your business and tax position
@@ -364,7 +370,6 @@ export default function OnboardingPage() {
               variant="ghost"
               size="sm"
               onClick={goBack}
-              disabled={step === 0}
             >
               Back
             </Button>

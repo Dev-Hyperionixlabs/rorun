@@ -136,3 +136,12 @@ export function planHasFeature(planId: PlanId, feature: PlanFeatureKey): boolean
   return getPlanMeta(planId).features[feature] ?? false;
 }
 
+export function minimumPlanForFeature(feature: PlanFeatureKey): PlanId | null {
+  // Return the first plan (from lowest -> highest) that includes this feature.
+  const order: PlanId[] = ["free", "basic", "business", "accountant"];
+  for (const id of order) {
+    if (planHasFeature(id, feature)) return id;
+  }
+  return null;
+}
+

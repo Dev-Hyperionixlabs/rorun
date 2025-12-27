@@ -285,7 +285,12 @@ Value Added Tax (VAT) in Nigeria is charged at **7.5%** on goods and services.
 
   // NOTE: We intentionally do not seed demo users/businesses/transactions here.
   // Create default tax rule set (Phase 11)
-  const defaultRuleSet = await prisma.taxRuleSet.upsert({
+  // Some environments may have an out-of-date generated Prisma Client type surface.
+  // These models exist in `schema.prisma`, but if the local client typings lag behind,
+  // TypeScript will complain. Use a narrow escape hatch here to keep seed runnable.
+  const prismaAny = prisma as any;
+
+  const defaultRuleSet = await prismaAny.taxRuleSet.upsert({
     where: { version: '2026.1' },
     update: {},
     create: {
@@ -298,7 +303,7 @@ Value Added Tax (VAT) in Nigeria is charged at **7.5%** on goods and services.
   });
 
   // Create default baseline rule (sets unknown status)
-  await prisma.taxRuleV2.upsert({
+  await prismaAny.taxRuleV2.upsert({
     where: {
       ruleSetId_key: {
         ruleSetId: defaultRuleSet.id,
@@ -323,7 +328,7 @@ Value Added Tax (VAT) in Nigeria is charged at **7.5%** on goods and services.
   });
 
   // Create placeholder SME zero-tax rule (example - must be updated)
-  await prisma.taxRuleV2.upsert({
+  await prismaAny.taxRuleV2.upsert({
     where: {
       ruleSetId_key: {
         ruleSetId: defaultRuleSet.id,
@@ -351,7 +356,7 @@ Value Added Tax (VAT) in Nigeria is charged at **7.5%** on goods and services.
   });
 
   // Create placeholder VAT exemption rule
-  await prisma.taxRuleV2.upsert({
+  await prismaAny.taxRuleV2.upsert({
     where: {
       ruleSetId_key: {
         ruleSetId: defaultRuleSet.id,
@@ -379,7 +384,7 @@ Value Added Tax (VAT) in Nigeria is charged at **7.5%** on goods and services.
   });
 
   // Create annual return deadline template (placeholder)
-  await prisma.deadlineTemplate.upsert({
+  await prismaAny.deadlineTemplate.upsert({
     where: {
       ruleSetId_key: {
         ruleSetId: defaultRuleSet.id,

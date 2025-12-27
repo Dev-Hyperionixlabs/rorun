@@ -13,6 +13,8 @@ import { getTransactions, Transaction } from "@/lib/api/transactions";
 import { useToast } from "@/components/ui/toast";
 import { Upload, Lock } from "lucide-react";
 import { getBusinesses } from "@/lib/api/businesses";
+import { ErrorState, useSlowLoading } from "@/components/ui/page-state";
+import { useMockApi as useMockData } from "@/lib/mock-api";
 
 export default function TransactionsPage() {
   return (
@@ -26,15 +28,23 @@ function TransactionsPageInner() {
   const searchParams = useSearchParams();
   const focus = searchParams.get("focus");
   const { addToast } = useToast();
+  const { businesses: mockBusinesses } = useMockData();
   
   const [business, setBusiness] = useState<{ id: string } | null>(null);
+  const [businessError, setBusinessError] = useState<string | null>(null);
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [showImportWizard, setShowImportWizard] = useState(false);
   const [refreshKey, setRefreshKey] = useState(0);
   const { hasFeature } = useFeatures(business?.id || null);
+  const slow = useSlowLoading(loading);
 
   useEffect(() => {
+    if (process.env.NEXT_PUBLIC_USE_MOCK_API === "true" && mockBusinesses?.[0]?.id) {
+      setBusiness({ id: mockBusinesses[0].id });
+      return;
+    }
     loadBusiness();
   }, []);
 
@@ -46,12 +56,20 @@ function TransactionsPageInner() {
 
   const loadBusiness = async () => {
     try {
+      setBusinessError(null);
       const businesses = await getBusinesses();
       if (businesses && businesses.length > 0) {
         setBusiness({ id: businesses[0].id });
+      } else {
+        setBusiness(null);
+        setBusinessError("No workspace found for this account.");
+        setLoading(false);
       }
     } catch (error: any) {
       console.error("Failed to load business:", error);
+      setBusinessError(error?.message || "Couldn't load your workspace.");
+      setBusiness(null);
+      setLoading(false);
     }
   };
 
@@ -60,11 +78,13 @@ function TransactionsPageInner() {
     
     try {
       setLoading(true);
+      setLoadError(null);
       const result = await getTransactions(business.id, {
         limit: 1000,
       });
       setTransactions(result.items || []);
     } catch (error: any) {
+      setLoadError(error?.message || "Please try again later.");
       addToast({
         title: "Failed to load transactions",
         description: error?.message || "Please try again later.",
@@ -116,17 +136,41 @@ function TransactionsPageInner() {
   if (!business) {
     return (
       <div className="space-y-4">
-        <Card className="bg-white">
-          <CardContent className="py-6">
-            <p className="text-sm text-slate-500">Loading...</p>
-          </CardContent>
-        </Card>
+        {businessError ? (
+          <ErrorState
+            title="Couldn’t load workspace"
+            message={businessError}
+            onRetry={() => loadBusiness()}
+          />
+        ) : (
+          <Card className="bg-white">
+            <CardContent className="py-6">
+              <p className="text-sm text-slate-500">
+                {slow ? "Still loading… Check your API connection and retry." : "Loading…"}
+              </p>
+              {slow && (
+                <div className="mt-3">
+                  <Button size="sm" variant="secondary" onClick={() => loadBusiness()}>
+                    Retry
+                  </Button>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        )}
       </div>
     );
   }
 
   return (
     <div className="space-y-4">
+      {loadError && (
+        <ErrorState
+          title="Couldn’t load transactions"
+          message={loadError}
+          onRetry={() => loadTransactions()}
+        />
+      )}
       <div className="flex items-start justify-between">
         <div>
           <h1 className="text-lg font-semibold text-slate-900">Transactions</h1>

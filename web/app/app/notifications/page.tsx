@@ -7,12 +7,18 @@ import { getBusinesses } from "@/lib/api/businesses";
 import { useToast } from "@/components/ui/toast";
 import { Loader2, Bell, CheckCircle2, XCircle, Clock, FileText } from "lucide-react";
 import Link from "next/link";
+import { ErrorState, useSlowLoading } from "@/components/ui/page-state";
+import { useMockApi as useMockData } from "@/lib/mock-api";
 
 export default function NotificationsPage() {
   const [businessId, setBusinessId] = useState<string | null>(null);
   const [notifications, setNotifications] = useState<NotificationEvent[]>([]);
   const [loading, setLoading] = useState(true);
+  const [businessError, setBusinessError] = useState<string | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const { addToast } = useToast();
+  const slow = useSlowLoading(loading);
+  const { businesses: mockBusinesses } = useMockData();
 
   useEffect(() => {
     loadBusiness();
@@ -26,12 +32,26 @@ export default function NotificationsPage() {
 
   const loadBusiness = async () => {
     try {
+      if (process.env.NEXT_PUBLIC_USE_MOCK_API === "true" && mockBusinesses?.[0]?.id) {
+        setBusinessId(mockBusinesses[0].id);
+        setBusinessError(null);
+        return;
+      }
+
+      setBusinessError(null);
       const businesses = await getBusinesses();
       if (businesses && businesses.length > 0) {
         setBusinessId(businesses[0].id);
+      } else {
+        setBusinessId(null);
+        setBusinessError("No workspace found for this account.");
+        setLoading(false);
       }
     } catch (error: any) {
       console.error("Failed to load business:", error);
+      setBusinessId(null);
+      setBusinessError(error?.message || "Couldn't load your workspace.");
+      setLoading(false);
     }
   };
 
@@ -40,9 +60,11 @@ export default function NotificationsPage() {
 
     try {
       setLoading(true);
+      setLoadError(null);
       const data = await getNotificationFeed(businessId, 50);
       setNotifications(data);
     } catch (error: any) {
+      setLoadError(error?.message || "Please try again later.");
       addToast({
         title: "Failed to load notifications",
         description: error?.message || "Please try again later.",
@@ -89,6 +111,30 @@ export default function NotificationsPage() {
     return null;
   };
 
+  if (businessError) {
+    return (
+      <div className="space-y-4">
+        <div>
+          <h1 className="text-lg font-semibold text-slate-900">Notifications</h1>
+          <p className="text-sm text-slate-500">Your recent notifications and reminders.</p>
+        </div>
+        <ErrorState title="Couldn’t load workspace" message={businessError} onRetry={() => loadBusiness()} />
+      </div>
+    );
+  }
+
+  if (loadError) {
+    return (
+      <div className="space-y-4">
+        <div>
+          <h1 className="text-lg font-semibold text-slate-900">Notifications</h1>
+          <p className="text-sm text-slate-500">Your recent notifications and reminders.</p>
+        </div>
+        <ErrorState title="Couldn’t load notifications" message={loadError} onRetry={() => loadNotifications()} />
+      </div>
+    );
+  }
+
   if (loading) {
     return (
       <div className="space-y-4">
@@ -99,7 +145,17 @@ export default function NotificationsPage() {
         <Card>
           <CardContent className="py-6">
             <div className="flex items-center justify-center">
-              <Loader2 className="h-5 w-5 animate-spin text-slate-400" />
+              <div className="flex flex-col items-center gap-2">
+                <Loader2 className="h-5 w-5 animate-spin text-slate-400" />
+                {slow && (
+                  <button
+                    className="text-xs font-medium text-slate-600 hover:text-slate-900"
+                    onClick={() => loadNotifications()}
+                  >
+                    Still loading… Retry
+                  </button>
+                )}
+              </div>
             </div>
           </CardContent>
         </Card>
