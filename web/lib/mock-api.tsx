@@ -1,6 +1,7 @@
 "use client";
 
 import React, { createContext, useContext, useEffect, useMemo, useState } from "react";
+import { usePathname } from "next/navigation";
 import { PLANS, PlanMeta, PlanId } from "./plans";
 import {
   Alert,
@@ -13,6 +14,7 @@ import {
   YearSummary,
 } from "./types";
 import { getCurrentUser } from "./api/auth";
+import { getStoredAuthToken } from "./auth-token";
 import {
   getBusinessPlan,
   getBusinesses,
@@ -118,6 +120,7 @@ const emptySummary = (year: number): YearSummary => ({
 });
 
 export const MockApiProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+  const pathname = usePathname();
   const [state, setState] = useState<AppState>({
     loading: true,
     user: null,
@@ -243,8 +246,27 @@ export const MockApiProvider: React.FC<{ children: React.ReactNode }> = ({ child
   };
 
   useEffect(() => {
+    const hasToken = !!getStoredAuthToken();
+    const isProtectedRoute =
+      (pathname || "").startsWith("/app") || (pathname || "").startsWith("/admin");
+
+    // On public pages (/, /login, /signup, /help, etc.), don't spam /auth/me without a token.
+    // This prevents 401 redirect loops and 429 rate limiting on production.
+    if (!isProtectedRoute && !hasToken) {
+      setState((s) => ({
+        ...s,
+        loading: false,
+        error: undefined,
+        user: null,
+        businesses: [],
+        currentBusinessId: null,
+      }));
+      return;
+    }
+
     load();
-  }, []);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pathname]);
 
   const value = useMemo<AppContextValue>(() => {
     const businessId = state.currentBusinessId || state.user?.currentBusinessId || state.businesses[0]?.id || null;

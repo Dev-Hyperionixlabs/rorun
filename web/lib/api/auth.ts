@@ -4,8 +4,7 @@ import { api } from "./client";
 import { storeAuthToken, clearAuthToken } from "../auth-token";
 
 export interface RequestOtpResponse {
-  message: string;
-  expiresIn: number;
+  ok: true;
 }
 
 export interface VerifyOtpResponse {
@@ -26,18 +25,22 @@ export async function verifyOtp(
   phone: string,
   code: string
 ): Promise<VerifyOtpResponse> {
-  const response = await api.post<VerifyOtpResponse>(
+  const response = await api.post<any>(
     "/auth/verify-otp",
     { phone, code },
     { skipAuth: true }
   );
 
-  // Store the token
-  if (response.accessToken) {
-    storeAuthToken(response.accessToken);
+  const accessToken: string | undefined =
+    response?.accessToken || response?.access_token;
+  if (accessToken) {
+    storeAuthToken(accessToken);
   }
 
-  return response;
+  return {
+    accessToken: accessToken || "",
+    user: response.user,
+  };
 }
 
 export async function logout(): Promise<void> {

@@ -86,7 +86,15 @@ export async function apiRequest<T = any>(
     if (res.status === 401) {
       hardResetSession();
       if (typeof window !== "undefined") {
-        window.location.href = "/login?reason=session_expired";
+        // Avoid infinite reload loops if we're already on /login.
+        try {
+          const currentPath = window.location.pathname;
+          if (currentPath !== "/login") {
+            window.location.href = "/login?reason=session_expired";
+          }
+        } catch {
+          window.location.href = "/login?reason=session_expired";
+        }
       }
       throw new ApiError(401, "Session expired. Please log in again.");
     }
