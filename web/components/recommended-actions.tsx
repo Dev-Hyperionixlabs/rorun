@@ -1,15 +1,15 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "./ui/button";
 import { useMockApi } from "@/lib/mock-api";
-import { computeTaxSafetyScoreFromMock } from "@/lib/tax-safety";
-import { computeRecommendedActionsMock } from "@/lib/recommended-actions";
 import { useRecommendedActionsApi } from "@/hooks/use-recommended-actions";
 import { useFilingPack } from "@/hooks/use-filing-pack";
 import { completeAction, dismissAction } from "@/lib/api/recommended-actions";
 import { Check, X } from "lucide-react";
+import { runEligibilityCheck } from "@/lib/api/eligibility";
+import { useToast } from "./ui/toast";
 
 export function RecommendedActionsSection() {
   const router = useRouter();
@@ -19,24 +19,14 @@ export function RecommendedActionsSection() {
   const { pack, generate, isLoading: packLoading } = useFilingPack(business.id, year);
   const [packError, setPackError] = useState<string | null>(null);
   const [completing, setCompleting] = useState<string | null>(null);
-
-  const score = useMemo(
-    () => computeTaxSafetyScoreFromMock(business, transactions, year),
-    [business, transactions, year]
-  );
+  const { addToast } = useToast();
 
   const { actions: apiActions, isLoading: apiLoading, isError, refresh: refreshActions } = useRecommendedActionsApi(
     business.id,
     year
   );
 
-  const actions = useMemo(
-    () =>
-      apiActions && apiActions.length > 0
-        ? apiActions
-        : computeRecommendedActionsMock(business, transactions, score, currentPlanId),
-    [apiActions, business, transactions, score, currentPlanId]
-  );
+  const actions = apiActions || [];
 
   const handleClick = async (actionTarget: string, actionType?: string, available?: boolean) => {
     if (actionType === "GENERATE_YEAR_END_PACK" && available) {
@@ -55,15 +45,21 @@ export function RecommendedActionsSection() {
     
     // Handle guided flows
     if (actionType === "RUN_ELIGIBILITY_CHECK") {
-      router.push("/onboarding");
+      try {
+        await runEligibilityCheck(business.id);
+        addToast({ title: "Status check complete", description: "Your eligibility has been updated." });
+        if (refreshActions) await refreshActions();
+      } catch (e: any) {
+        addToast({ title: "Couldn’t run status check", description: e?.message || "Please try again." });
+      }
       return;
     }
     if (actionType === "ADD_RECORDS_FOR_MISSING_MONTHS") {
-      router.push("/app/transactions?focus=missing-months");
+      router.push("/app/transactions/new");
       return;
     }
     if (actionType === "UPLOAD_RECEIPTS_FOR_HIGH_VALUE") {
-      router.push("/app/documents?filter=missing-receipts");
+      router.push("/app/documents");
       return;
     }
     
@@ -102,6 +98,10 @@ export function RecommendedActionsSection() {
       </div>
       {(apiLoading && !apiActions) ? (
         <p className="text-sm text-slate-500">Loading actions…</p>
+      ) : isError ? (
+        <div className="rounded-lg border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-800">
+          Couldn’t load next actions right now.
+        </div>
       ) : actions.length === 0 ? (
         <p className="text-sm text-slate-500">
           You&apos;re in a strong place. Keep logging your activity each week.

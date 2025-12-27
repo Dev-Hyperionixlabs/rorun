@@ -13,7 +13,7 @@ export function TaxSafetyCard() {
   const business = businesses[0];
   const year = new Date().getFullYear();
 
-  const { status } = useFirsReady(business, transactions, year);
+  const { status, error } = useFirsReady(business, transactions, year);
   const prevScore = useRef<number | null>(null);
   const { addToast } = useToast();
 
@@ -41,7 +41,7 @@ export function TaxSafetyCard() {
     return (
       <Card>
         <CardContent className="py-6 text-sm text-slate-600">
-          Loading FIRS-Ready status...
+          {error ? `Couldn’t load FIRS-Ready status. ${error}` : "Loading FIRS-Ready status..."}
         </CardContent>
       </Card>
     );

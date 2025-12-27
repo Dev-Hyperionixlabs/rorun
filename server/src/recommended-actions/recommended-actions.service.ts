@@ -27,8 +27,8 @@ export class RecommendedActionsService {
       // ownership guard
       await this.businessesService.findOne(businessId, userId);
 
-      const subscription = await this.subscriptionsService.getActiveSubscription(userId, businessId);
-      const planId = (subscription?.plan?.id?.toLowerCase?.() as PlanId) ?? 'free';
+    const subscription = await this.subscriptionsService.getActiveSubscription(userId, businessId);
+    const planId = ((subscription?.planId || 'free') as string).toLowerCase() as PlanId;
       const score = await this.taxSafetyService.getTaxSafetyScore(businessId, userId, taxYear);
 
       const [missingMonths, highValueWithoutDocs, obligations, latestPack, actionStates] = await Promise.all([

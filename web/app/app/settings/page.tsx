@@ -145,18 +145,22 @@ function PlanSettingsSection() {
     setLoading(id);
 
     try {
-      if (id === "free") {
-        // Free plan - no payment needed
-        setCurrentPlan(id);
-        await setCurrentPlanApi(business.id, id);
-      } else {
-        // Paid plan - create checkout session
-        const { createCheckoutSession } = await import("@/lib/api/billing");
-        const { authorizationUrl } = await createCheckoutSession(business.id, id);
-        // Redirect to Paystack
-        window.location.href = authorizationUrl;
-        return; // Don't clear loading state, we're redirecting
+      // Prefer real billing if available; otherwise fall back to server-side plan switch (simulated billing).
+      if (id !== "free") {
+        try {
+          const { createCheckoutSession } = await import("@/lib/api/billing");
+          const { authorizationUrl } = await createCheckoutSession(business.id, id);
+          if (authorizationUrl) {
+            window.location.href = authorizationUrl;
+            return;
+          }
+        } catch {
+          // billing not configured; fall back
+        }
       }
+
+      const updated = await setCurrentPlanApi(business.id, id);
+      setCurrentPlan(updated);
     } catch (e: any) {
       setError(e?.message || "Failed to start checkout");
     } finally {

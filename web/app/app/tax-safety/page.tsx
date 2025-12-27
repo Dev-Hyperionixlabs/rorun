@@ -1,10 +1,13 @@
 "use client";
 
-import { useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useMockApi } from "@/lib/mock-api";
-import { computeTaxSafetyScoreFromMock } from "@/lib/tax-safety";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { useRouter } from "next/navigation";
+import { getTaxSafetyScore, TaxSafetyScore } from "@/lib/api/tax-safety";
+import { runEligibilityCheck } from "@/lib/api/eligibility";
+import { useToast } from "@/components/ui/toast";
 
 const reasonCopy: Record<string, { title: string; body: string; action: string }> = {
   MISSING_ELIGIBILITY: {
@@ -50,35 +53,54 @@ const reasonCopy: Record<string, { title: string; body: string; action: string }
 };
 
 export default function TaxSafetyDetailPage() {
-  const { businesses, transactions } = useMockApi();
+  const router = useRouter();
+  const { businesses } = useMockApi();
+  const { addToast } = useToast();
   const business = businesses[0];
   const year = new Date().getFullYear();
-  // Hooks must be called unconditionally - provide fallback score if business is null
-  const score = useMemo(
-    () => {
-      if (!business) {
-        return {
-          businessId: "",
-          taxYear: year,
-          score: 0,
-          band: "low" as const,
-          reasons: [] as const,
-          breakdown: {
-            hasCurrentTaxProfile: false,
-            recordsCoverageRatio: 0,
-            receiptCoverageRatio: null,
-            hasOverdueObligation: false,
-            daysUntilNextDeadline: null,
-          },
-        };
+  const [score, setScore] = useState<TaxSafetyScore | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    async function load() {
+      if (!business) return;
+      setLoading(true);
+      setError(null);
+      try {
+        const data = await getTaxSafetyScore(business.id, year);
+        if (!cancelled) setScore(data);
+      } catch (e: any) {
+        if (!cancelled) setError(e?.message || "Couldn’t load tax safety score.");
+      } finally {
+        if (!cancelled) setLoading(false);
       }
-      return computeTaxSafetyScoreFromMock(business, transactions, year);
-    },
-    [business, transactions, year]
-  );
+    }
+    load();
+    return () => {
+      cancelled = true;
+    };
+  }, [business?.id, year]);
 
   if (!business) {
     return <div className="text-sm text-slate-500">Loading tax safety details…</div>;
+  }
+  if (loading && !score) {
+    return <div className="text-sm text-slate-500">Loading tax safety details…</div>;
+  }
+  if (!score) {
+    return (
+      <div className="rounded-lg border border-rose-200 bg-rose-50 p-4">
+        <p className="text-sm font-semibold text-rose-900">Couldn’t load tax safety</p>
+        <p className="mt-1 text-sm text-rose-700">{error || "Please try again."}</p>
+        <div className="mt-3">
+          <Button size="sm" variant="secondary" onClick={() => window.location.reload()}>
+            Retry
+          </Button>
+        </div>
+      </div>
+    );
   }
 
   const bandSummary =
@@ -87,6 +109,33 @@ export default function TaxSafetyDetailPage() {
       : score.band === "medium"
       ? "You’re mostly safe but there are gaps to fix."
       : "High risk if FIRS asks questions today.";
+
+  const handleReasonAction = async (reason: string) => {
+    if (reason === "MISSING_ELIGIBILITY") {
+      try {
+        await runEligibilityCheck(business.id);
+        addToast({ title: "Status check complete", description: "Your eligibility has been updated." });
+        const updated = await getTaxSafetyScore(business.id, year);
+        setScore(updated);
+      } catch (e: any) {
+        addToast({ title: "Couldn’t run status check", description: e?.message || "Please try again." });
+      }
+      return;
+    }
+    if (reason === "LOW_RECORDS_COVERAGE" || reason === "MEDIUM_RECORDS_COVERAGE") {
+      router.push("/app/transactions/new");
+      return;
+    }
+    if (reason === "LOW_RECEIPT_COVERAGE" || reason === "MEDIUM_RECEIPT_COVERAGE") {
+      router.push("/app/documents");
+      return;
+    }
+    if (reason === "OVERDUE_OBLIGATION") {
+      router.push("/app/obligations?filter=overdue");
+      return;
+    }
+    router.push("/app/dashboard");
+  };
 
   return (
     <div className="space-y-4">
@@ -196,7 +245,7 @@ export default function TaxSafetyDetailPage() {
                       {copy.body}
                     </p>
                   </div>
-                  <Button size="sm" variant="secondary">
+                  <Button size="sm" variant="secondary" onClick={() => handleReasonAction(reason)}>
                     {copy.action}
                   </Button>
                 </div>

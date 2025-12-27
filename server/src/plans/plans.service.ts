@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
+import { getPlanFeatures, PlanFeatureKey, PlanId } from './plan.types';
 
 // Default free plan when DB tables are missing or schema drift occurs
 const DEFAULT_FREE_PLAN = {
@@ -38,28 +39,14 @@ export class PlansService {
   }
 
   async hasFeature(userId: string, businessId: string, featureKey: string): Promise<boolean> {
-    try {
-      const subscription = await this.prisma.subscription.findFirst({
-        where: {
-          userId,
-          businessId,
-          status: 'active',
-          OR: [{ endsAt: null }, { endsAt: { gte: new Date() } }],
-        },
-        include: {
-          plan: { include: { features: true } },
-        },
-      });
-      if (!subscription) return false;
-      return subscription.plan.features.some((f) => f.featureKey === featureKey);
-    } catch (err: any) {
-      // If subscription/plan tables don't exist, assume free (no features)
-      console.error('[PlansService.hasFeature] Failed:', err?.message);
-      return false;
-    }
+    const effective = await this.getEffectivePlan(userId, businessId);
+    const key = featureKey as PlanFeatureKey;
+    return (effective?.features || []).some((f: any) => f.featureKey === key);
   }
 
   async getEffectivePlan(userId: string, businessId: string) {
+    // IMPORTANT: avoid depending on `plans` / `plan_features` tables here.
+    // We only need the active subscription's planId; feature entitlement comes from `plan.types.ts`.
     try {
       const subscription = await this.prisma.subscription.findFirst({
         where: {
@@ -68,39 +55,18 @@ export class PlansService {
           status: 'active',
           OR: [{ endsAt: null }, { endsAt: { gte: new Date() } }],
         },
-        include: {
-          plan: { include: { features: true } },
-        },
         orderBy: { startedAt: 'desc' },
+        select: { planId: true },
       });
 
-      if (!subscription) {
-        // Try to fetch the free plan from DB
-        try {
-          const freePlan = await this.prisma.plan.findUnique({
-            where: { id: 'free' },
-            include: { features: true },
-          });
-          return {
-            planId: 'free',
-            plan: freePlan,
-            features: freePlan?.features || [],
-          };
-        } catch {
-          return DEFAULT_FREE_PLAN;
-        }
-      }
+      const planId = ((subscription?.planId || 'free') as string).toLowerCase() as PlanId;
+      const featuresMap = getPlanFeatures(planId);
+      const features = Object.entries(featuresMap)
+        .filter(([_, enabled]) => !!enabled)
+        .map(([featureKey]) => ({ featureKey }));
 
-      return {
-        planId: subscription.planId,
-        plan: subscription.plan,
-        features: subscription.plan.features.map((f) => ({
-          featureKey: f.featureKey,
-          limitValue: f.limitValue,
-        })),
-      };
+      return { planId, plan: null, features };
     } catch (err: any) {
-      // If tables don't exist, return default free plan
       console.error('[PlansService.getEffectivePlan] Failed:', err?.message);
       return DEFAULT_FREE_PLAN;
     }

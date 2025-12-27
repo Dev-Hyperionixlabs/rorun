@@ -1,6 +1,7 @@
 "use client";
 
 import { useSearchParams } from "next/navigation";
+import { useRouter } from "next/navigation";
 import { Suspense, useEffect, useState } from "react";
 import { useMockApi } from "@/lib/mock-api";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -12,6 +13,8 @@ import { useFilingPack } from "@/hooks/use-filing-pack";
 import { getReviewIssues } from "@/lib/api/review";
 import Link from "next/link";
 import { ErrorState } from "@/components/ui/page-state";
+import { getEligibilityResult, runEligibilityCheck } from "@/lib/api/eligibility";
+import { useToast } from "@/components/ui/toast";
 
 export default function DashboardPage() {
   return (
@@ -23,14 +26,25 @@ export default function DashboardPage() {
 
 function DashboardContent() {
   const searchParams = useSearchParams();
+  const router = useRouter();
+  const { addToast } = useToast();
   const { businesses, transactions, alerts, currentPlanId, currentBusinessId, loading, error, refresh } = useMockApi();
   const [openIssuesCount, setOpenIssuesCount] = useState<number>(0);
+  const [taxProfile, setTaxProfile] = useState<any>(null);
 
   const businessId = currentBusinessId || businesses[0]?.id || null;
   const business = (businessId ? businesses.find((b) => b.id === businessId) : null) || businesses[0] || null;
   const year = new Date().getFullYear();
   const { pack, isLoading: packLoading, generate } = useFilingPack(businessId, year);
   const [packError, setPackError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!businessId) return;
+    (async () => {
+      const p = await getEligibilityResult(businessId, year);
+      setTaxProfile(p);
+    })().catch(() => setTaxProfile(null));
+  }, [businessId, year]);
 
   useEffect(() => {
     if (!businessId) return;
@@ -94,20 +108,7 @@ function DashboardContent() {
 
   const latestAlerts = alerts.slice(0, 3);
 
-  const eligibility = business.eligibility || {
-    citStatus: "exempt",
-    vatStatus: "not_required",
-    whtSummary:
-      "You may need to deal with WHT when big clients pay you. Rorun will flag common cases.",
-    headline: "You likely qualify for 0% company income tax.",
-    explanation: [
-      "Based on your turnover band you are treated as a micro/small company.",
-      "You still need to file at least once a year even if tax is 0%.",
-      "Keep simple records so you can respond to FIRS without panic."
-    ],
-    riskLevel: "safe",
-    year: new Date().getFullYear()
-  };
+  const hasEligibility = !!taxProfile;
 
   const fromOnboarding = searchParams.get("from") === "onboarding";
   const canGeneratePack = currentPlanId !== "free";
@@ -168,63 +169,74 @@ function DashboardContent() {
                 Tax safety
               </p>
               <CardTitle className="mt-1 text-base">
-                {eligibility.headline}
+                {hasEligibility
+                  ? "Your latest eligibility result"
+                  : "Run your 2‑minute tax status check"}
               </CardTitle>
             </div>
             <div className="flex items-center gap-2 text-xs">
-              <span className="chip bg-emerald-100 text-emerald-800">
-                {eligibility.riskLevel === "safe"
-                  ? "SAFE"
-                  : eligibility.riskLevel === "attention"
-                  ? "ATTENTION"
-                  : "RISK"}
-              </span>
+              {hasEligibility ? (
+                <span className="chip bg-slate-100 text-slate-700">UPDATED</span>
+              ) : (
+                <span className="chip bg-amber-50 text-amber-800">ACTION NEEDED</span>
+              )}
             </div>
           </CardHeader>
           <CardContent className="space-y-4">
-            <div className="grid gap-3 text-xs md:grid-cols-3">
-              <div className="rounded-lg bg-slate-50 p-3">
-                <div className="text-[11px] text-slate-500">CIT</div>
-                <div className="mt-1 text-sm font-medium text-slate-900">
-                  {eligibility.citStatus === "exempt"
-                    ? "0% – exempt"
-                    : eligibility.citStatus === "liable"
-                    ? "May be liable"
-                    : "Unknown"}
+            {hasEligibility ? (
+              <div className="grid gap-3 text-xs md:grid-cols-3">
+                <div className="rounded-lg bg-slate-50 p-3">
+                  <div className="text-[11px] text-slate-500">CIT</div>
+                  <div className="mt-1 text-sm font-medium text-slate-900">
+                    {taxProfile?.citStatus || "—"}
+                  </div>
+                  <p className="mt-1 text-[11px] text-slate-500">Company income tax status.</p>
                 </div>
-                <p className="mt-1 text-[11px] text-slate-500">
-                  Company income tax based on your turnover band.
-                </p>
-              </div>
-              <div className="rounded-lg bg-slate-50 p-3">
-                <div className="text-[11px] text-slate-500">VAT</div>
-                <div className="mt-1 text-sm font-medium text-slate-900">
-                  {eligibility.vatStatus === "not_required"
-                    ? "Not required to register (yet)"
-                    : eligibility.vatStatus === "registered"
-                    ? "Registered"
-                    : "Should register soon"}
+                <div className="rounded-lg bg-slate-50 p-3">
+                  <div className="text-[11px] text-slate-500">VAT</div>
+                  <div className="mt-1 text-sm font-medium text-slate-900">
+                    {taxProfile?.vatStatus || "—"}
+                  </div>
+                  <p className="mt-1 text-[11px] text-slate-500">VAT registration status.</p>
                 </div>
-                <p className="mt-1 text-[11px] text-slate-500">
-                  We&apos;ll warn you if your turnover suggests VAT registration.
-                </p>
-              </div>
-              <div className="rounded-lg bg-slate-50 p-3">
-                <div className="text-[11px] text-slate-500">Next deadline</div>
-                <div className="mt-1 text-sm font-medium text-slate-900">
-                  Annual return • 45 days left
+                <div className="rounded-lg bg-slate-50 p-3">
+                  <div className="text-[11px] text-slate-500">WHT</div>
+                  <div className="mt-1 text-sm font-medium text-slate-900">
+                    {taxProfile?.whtStatus || "—"}
+                  </div>
+                  <p className="mt-1 text-[11px] text-slate-500">Withholding tax status.</p>
                 </div>
-                <p className="mt-1 text-[11px] text-slate-500">
-                  Rorun will remind you before this date and generate a pack.
-                </p>
               </div>
-            </div>
-
-            <ul className="space-y-1 text-xs text-slate-600">
-              {eligibility.explanation.map((item) => (
-                <li key={item}>• {item}</li>
-              ))}
-            </ul>
+            ) : (
+              <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
+                <p className="font-semibold">You haven’t checked your tax status for this year.</p>
+                <p className="mt-1 text-xs text-amber-800">
+                  Run eligibility to confirm 0% status and populate your dashboard with accurate data.
+                </p>
+                <div className="mt-3 flex gap-2">
+                  <Button
+                    size="sm"
+                    className="rounded-full bg-emerald-600 text-xs font-semibold hover:bg-emerald-700"
+                    onClick={async () => {
+                      if (!businessId) return;
+                      try {
+                        await runEligibilityCheck(businessId);
+                        addToast({ title: "Status check complete", description: "Eligibility updated." });
+                        const p = await getEligibilityResult(businessId, year);
+                        setTaxProfile(p);
+                      } catch (e: any) {
+                        addToast({ title: "Couldn’t run status check", description: e?.message || "Please try again." });
+                      }
+                    }}
+                  >
+                    Run status check
+                  </Button>
+                  <Button size="sm" variant="secondary" className="rounded-full" onClick={() => router.push("/app/tax-safety")}>
+                    View details
+                  </Button>
+                </div>
+              </div>
+            )}
           </CardContent>
         </Card>
 
@@ -252,11 +264,13 @@ function DashboardContent() {
               </span>
             </div>
             <div className="mt-3 flex flex-wrap gap-2">
-              <Button size="sm">Add income</Button>
-              <Button size="sm" variant="secondary">
+              <Button size="sm" onClick={() => router.push("/app/transactions/new?type=income")}>
+                Add income
+              </Button>
+              <Button size="sm" variant="secondary" onClick={() => router.push("/app/transactions/new?type=expense")}>
                 Add expense
               </Button>
-              <Button size="sm" variant="ghost">
+              <Button size="sm" variant="ghost" onClick={() => router.push("/app/transactions")}>
                 View records
               </Button>
             </div>

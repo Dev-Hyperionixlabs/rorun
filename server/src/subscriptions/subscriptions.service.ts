@@ -29,9 +29,9 @@ export class SubscriptionsService {
           status: 'active',
           OR: [{ endsAt: null }, { endsAt: { gte: new Date() } }],
         },
-        include: {
-          plan: { include: { features: true } },
-        },
+        // IMPORTANT: do not include `plan` here.
+        // In production we may not have the `plans/plan_features` tables migrated yet,
+        // but we still want plan switching to work (planId stored on subscription).
       });
     } catch (err: any) {
       console.error('[SubscriptionsService.getActiveSubscription] Failed:', err?.message);
@@ -55,7 +55,6 @@ export class SubscriptionsService {
           status: 'active',
           startedAt: now,
         },
-        include: { plan: true },
       });
 
       return { planId: subscription.planId, subscription };

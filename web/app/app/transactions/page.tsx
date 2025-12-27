@@ -192,7 +192,7 @@ function TransactionsPageInner() {
                 onClick={() => {
                   window.location.href = "/app/settings?tab=plan";
                 }}
-                className="rounded-full bg-slate-100 text-sm font-semibold text-slate-700 hover:bg-slate-200"
+                className="rounded-full border border-emerald-600 bg-white text-sm font-semibold text-emerald-700 hover:bg-emerald-50"
               >
                 <Lock className="mr-1.5 h-4 w-4" />
                 Upgrade to connect bank
@@ -307,7 +307,13 @@ function TransactionsPageInner() {
                   {missingMonths.length > 3 && ` and ${missingMonths.length - 3} more`}.
                 </p>
               </div>
-              <Button size="sm" className="bg-amber-600 hover:bg-amber-700">
+              <Button
+                size="sm"
+                className="bg-amber-600 hover:bg-amber-700"
+                onClick={() => {
+                  window.location.href = "/app/transactions/new";
+                }}
+              >
                 Add records
               </Button>
             </div>

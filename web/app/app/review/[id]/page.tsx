@@ -292,7 +292,10 @@ export default function ReviewIssueDetailPage() {
                             {t.description || "Transaction"}
                           </p>
                           <p className="text-sm font-semibold text-slate-900">
-                            ₦{Number(t.amount).toLocaleString()}
+                            {(() => {
+                              const n = Number((t as any).amount ?? 0);
+                              return `₦${Number.isFinite(n) ? n.toLocaleString() : "—"}`;
+                            })()}
                           </p>
                         </div>
                         <p className="text-xs text-slate-500 mt-1">

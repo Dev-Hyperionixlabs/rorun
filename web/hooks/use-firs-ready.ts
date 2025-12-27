@@ -1,9 +1,8 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { getFirsReadyStatus } from "@/lib/api/firsReady";
+import { getFirsReadyStatus } from "@/lib/api/tax-safety";
 import { FirsReadyStatus, Business, Transaction } from "@/lib/types";
-import { computeTaxSafetyScoreFromMock } from "@/lib/tax-safety";
 
 export function useFirsReady(
   business: Business | null,
@@ -12,43 +11,22 @@ export function useFirsReady(
 ) {
   const [status, setStatus] = useState<FirsReadyStatus | null>(null);
   const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
     async function load() {
       if (!business) return;
       setIsLoading(true);
+      setError(null);
       try {
         const apiStatus = await getFirsReadyStatus(business.id, year);
-        if (!cancelled && apiStatus) {
-          setStatus(apiStatus);
-          return;
+        if (!cancelled) setStatus(apiStatus);
+      } catch (e: any) {
+        if (!cancelled) {
+          setStatus(null);
+          setError(e?.message || "Couldn’t load FIRS-ready status.");
         }
-      } catch {
-        // ignore and fall back
-      }
-
-      // fallback to mock computation
-      const score = computeTaxSafetyScoreFromMock(business, transactions, year);
-      if (!cancelled) {
-        setStatus({
-          businessId: business.id,
-          taxYear: year,
-          score: score.score,
-          band: score.band,
-          label:
-            score.score >= 80
-              ? "Green"
-              : score.score >= 50
-              ? "Amber"
-              : "Red",
-          message:
-            score.score >= 80
-              ? "You’re in a strong FIRS-ready position."
-              : score.score >= 50
-              ? "Mostly safe, but there are gaps to fix."
-              : "High risk if FIRS asks questions today.",
-        });
       }
     }
     load();
@@ -57,6 +35,6 @@ export function useFirsReady(
     };
   }, [business, transactions, year]);
 
-  return { status, isLoading };
+  return { status, isLoading, error };
 }
 
