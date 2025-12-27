@@ -163,16 +163,16 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                 onClick={() => setShowProfileMenu((v) => !v)}
               >
                 <span className="h-6 w-6 rounded-full bg-brand/10 text-[11px] font-semibold text-brand flex items-center justify-center">
-                  {user.name.charAt(0)}
+                  {(user.name || user.email || "U").charAt(0)}
                 </span>
-                <span className="truncate max-w-[120px]">{user.name}</span>
+                <span className="truncate max-w-[120px]">{user.name || user.email || "Account"}</span>
               </button>
 
               {showProfileMenu && (
                 <div className="absolute right-0 top-12 z-40 w-48 rounded-2xl border border-slate-200 bg-white shadow-xl overflow-hidden">
                   <Link
                     className="block px-4 py-3 text-sm text-slate-700 hover:bg-slate-50"
-                    href="/app/settings?tab=account"
+                    href="/app/settings?tab=profile"
                     onClick={() => setShowProfileMenu(false)}
                   >
                     Profile

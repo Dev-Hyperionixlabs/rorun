@@ -7,7 +7,7 @@ import {
   FilingPack,
 } from "@/lib/api/filingPacks";
 
-export function useFilingPack(businessId: string, year: number) {
+export function useFilingPack(businessId: string | null, year: number) {
   const [pack, setPack] = useState<FilingPack | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [isGenerating, setIsGenerating] = useState(false);
@@ -29,6 +29,7 @@ export function useFilingPack(businessId: string, year: number) {
   };
 
   const startPolling = () => {
+    if (!businessId) return;
     if (isPollingRef.current) return; // Already polling
     stopPolling();
     isPollingRef.current = true;
@@ -82,6 +83,14 @@ export function useFilingPack(businessId: string, year: number) {
   useEffect(() => {
     let cancelled = false;
     async function load() {
+      if (!businessId) {
+        setPack(null);
+        setIsGenerating(false);
+        setIsLoading(false);
+        setError("No workspace selected.");
+        stopPolling();
+        return;
+      }
       setIsLoading(true);
       setError(null);
       try {
@@ -110,6 +119,11 @@ export function useFilingPack(businessId: string, year: number) {
   }, [businessId, year]);
 
   const generate = async () => {
+    if (!businessId) {
+      const err: any = new Error("No workspace selected");
+      err.code = "NO_WORKSPACE";
+      throw err;
+    }
     setIsLoading(true);
     setIsGenerating(true);
     setError(null);

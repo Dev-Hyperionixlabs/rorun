@@ -9,9 +9,9 @@ import { TaxSafetyCard } from "@/components/tax-safety-card";
 import { RecommendedActionsSection } from "@/components/recommended-actions";
 import { ComplianceTasksCard } from "@/components/compliance-tasks-card";
 import { useFilingPack } from "@/hooks/use-filing-pack";
-import { getBusinesses } from "@/lib/api/businesses";
 import { getReviewIssues } from "@/lib/api/review";
 import Link from "next/link";
+import { ErrorState } from "@/components/ui/page-state";
 
 export default function DashboardPage() {
   return (
@@ -23,40 +23,26 @@ export default function DashboardPage() {
 
 function DashboardContent() {
   const searchParams = useSearchParams();
-  const { businesses, transactions, alerts, currentPlanId } = useMockApi();
-  const [businessId, setBusinessId] = useState<string | null>(null);
+  const { businesses, transactions, alerts, currentPlanId, currentBusinessId, loading, error, refresh } = useMockApi();
   const [openIssuesCount, setOpenIssuesCount] = useState<number>(0);
 
-  const business = businesses[0];
+  const businessId = currentBusinessId || businesses[0]?.id || null;
+  const business = (businessId ? businesses.find((b) => b.id === businessId) : null) || businesses[0] || null;
   const year = new Date().getFullYear();
-  // Hooks must be called unconditionally - use fallback ID if business is null
-  const { pack, isLoading: packLoading, generate } = useFilingPack(
-    business?.id || businessId || "",
-    year
-  );
+  const { pack, isLoading: packLoading, generate } = useFilingPack(businessId, year);
   const [packError, setPackError] = useState<string | null>(null);
 
-  const loadBusiness = async () => {
-    try {
-      const businesses = await getBusinesses();
-      if (businesses && businesses.length > 0) {
-        setBusinessId(businesses[0].id);
-        try {
-          const year = new Date().getFullYear();
-          const issues = await getReviewIssues(businesses[0].id, { taxYear: year, status: "open" });
-          setOpenIssuesCount(issues.length);
-        } catch {
-          setOpenIssuesCount(0);
-        }
-      }
-    } catch (error: any) {
-      console.error("Failed to load business:", error);
-    }
-  };
-
   useEffect(() => {
-    loadBusiness();
-  }, []);
+    if (!businessId) return;
+    (async () => {
+      try {
+        const issues = await getReviewIssues(businessId, { taxYear: year, status: "open" });
+        setOpenIssuesCount(issues.length);
+      } catch {
+        setOpenIssuesCount(0);
+      }
+    })().catch(() => {});
+  }, [businessId, year]);
 
   useEffect(() => {
     if (process.env.NODE_ENV === "production") return;
@@ -68,8 +54,35 @@ function DashboardContent() {
     }
   }, []);
 
-  if (!business) {
+  if (loading) {
     return <div className="text-sm text-slate-500">Loading dashboard…</div>;
+  }
+
+  if (error) {
+    return (
+      <ErrorState
+        title="Couldn’t load dashboard"
+        message={error}
+        onRetry={() => refresh()}
+      />
+    );
+  }
+
+  if (!businessId || !business) {
+    return (
+      <div className="rounded-lg border border-rose-200 bg-rose-50 p-4">
+        <p className="text-sm font-semibold text-rose-900">Couldn’t load workspace</p>
+        <p className="mt-1 text-sm text-rose-700">No workspace found for this account.</p>
+        <div className="mt-3 flex items-center gap-3">
+          <Button size="sm" variant="secondary" onClick={() => refresh()}>
+            Retry
+          </Button>
+          <Link className="text-sm text-emerald-700 hover:text-emerald-800" href="/onboarding">
+            Set up workspace
+          </Link>
+        </div>
+      </div>
+    );
   }
   const income = transactions
     .filter((t) => t.type === "income")

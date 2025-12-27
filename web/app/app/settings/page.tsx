@@ -41,8 +41,14 @@ export default function SettingsPage() {
 function SettingsContent() {
   const search = useSearchParams();
   const router = useRouter();
-  const defaultTab = search.get("tab") || "plan";
-  const [tab, setTab] = useState(defaultTab);
+  const searchTab = search.get("tab") || "plan";
+  const normalizedTab = tabs.some((t) => t.id === searchTab) ? searchTab : "plan";
+  const [tab, setTab] = useState(normalizedTab);
+
+  // Keep UI state in sync with URL (e.g. when navigating via profile menu or back/forward).
+  useEffect(() => {
+    setTab(normalizedTab);
+  }, [normalizedTab]);
 
   const handleTab = (id: string) => {
     setTab(id);

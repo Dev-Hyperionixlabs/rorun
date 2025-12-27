@@ -11,9 +11,10 @@ import { FileText, Lock } from "lucide-react";
 import Link from "next/link";
 
 export default function SummaryPage() {
-  const { yearSummaries, businesses, loading } = useMockApi();
+  const { yearSummaries, businesses, loading, error, refresh, currentBusinessId } = useMockApi();
   const summary = yearSummaries[0];
-  const business = businesses[0];
+  const businessIdFromCtx = currentBusinessId || businesses[0]?.id || null;
+  const business = (businessIdFromCtx ? businesses.find((b) => b.id === businessIdFromCtx) : null) || businesses[0] || null;
   const year = new Date().getFullYear();
   const [businessId, setBusinessId] = useState<string | null>(null);
   const { hasFeature } = useFeatures(businessId);
@@ -42,6 +43,39 @@ export default function SummaryPage() {
         </p>
       </div>
 
+      {loading && <div className="text-sm text-slate-500">Loading summary…</div>}
+
+      {!loading && error && (
+        <div className="rounded-lg border border-rose-200 bg-rose-50 p-4">
+          <p className="text-sm font-semibold text-rose-900">Couldn’t load summary</p>
+          <p className="mt-1 text-sm text-rose-700">{error}</p>
+          <div className="mt-3 flex items-center gap-3">
+            <Button size="sm" variant="secondary" onClick={() => refresh()}>
+              Retry
+            </Button>
+            <Link className="text-sm text-slate-600 hover:text-slate-900" href="/">
+              Back to home
+            </Link>
+          </div>
+        </div>
+      )}
+
+      {!loading && !error && (!business || !summary) && (
+        <div className="rounded-lg border border-rose-200 bg-rose-50 p-4">
+          <p className="text-sm font-semibold text-rose-900">Couldn’t load workspace</p>
+          <p className="mt-1 text-sm text-rose-700">No workspace found for this account.</p>
+          <div className="mt-3 flex items-center gap-3">
+            <Button size="sm" variant="secondary" onClick={() => refresh()}>
+              Retry
+            </Button>
+            <Link className="text-sm text-emerald-700 hover:text-emerald-800" href="/onboarding">
+              Set up workspace
+            </Link>
+          </div>
+        </div>
+      )}
+
+      {!loading && !error && business && summary && (
       <Card className="bg-white">
         <CardHeader className="pb-2">
           <CardTitle className="text-sm font-semibold text-slate-800">
@@ -54,6 +88,7 @@ export default function SummaryPage() {
           <Stat label="Profit" value={`₦${summary.profit.toLocaleString()}`} />
         </CardContent>
       </Card>
+      )}
 
       {businessId && (
         <>

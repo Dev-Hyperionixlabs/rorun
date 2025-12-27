@@ -82,6 +82,8 @@ interface AppContextValue extends AppState {
 
 const AppContext = createContext<AppContextValue | null>(null);
 
+const CURRENT_BUSINESS_STORAGE_KEY = "rorun_current_business_id";
+
 async function checkApiHealth(baseUrl: string, timeoutMs = 2500): Promise<boolean> {
   const base = baseUrl.replace(/\/$/, "");
   const ctrl = new AbortController();
@@ -195,7 +197,19 @@ export const MockApiProvider: React.FC<{ children: React.ReactNode }> = ({ child
         getKnowledgeArticles().catch(() => []),
       ]);
 
-      const businessId = user?.currentBusinessId || businesses[0]?.id || null;
+      // Prefer a previously selected workspace if present and still valid.
+      let preferredBusinessId: string | null = null;
+      try {
+        preferredBusinessId = window.localStorage.getItem(CURRENT_BUSINESS_STORAGE_KEY);
+      } catch {
+        preferredBusinessId = null;
+      }
+
+      const businessId =
+        (preferredBusinessId && businesses.some((b) => b.id === preferredBusinessId) ? preferredBusinessId : null) ||
+        user?.currentBusinessId ||
+        businesses[0]?.id ||
+        null;
       const year = new Date().getFullYear();
 
       const [alerts, txResponse, documents, planResponse, summary] = await Promise.all([
@@ -213,7 +227,7 @@ export const MockApiProvider: React.FC<{ children: React.ReactNode }> = ({ child
       setState((s) => ({
         ...s,
         loading: false,
-        user,
+        user: user && businessId ? ({ ...user, currentBusinessId: businessId } as any) : user,
         businesses,
         currentBusinessId: businessId,
         alerts,
@@ -223,6 +237,14 @@ export const MockApiProvider: React.FC<{ children: React.ReactNode }> = ({ child
         knowledge,
         yearSummaries: [summary],
       }));
+
+      if (businessId) {
+        try {
+          window.localStorage.setItem(CURRENT_BUSINESS_STORAGE_KEY, businessId);
+        } catch {
+          // ignore
+        }
+      }
     } catch (err: any) {
       // If auth is missing/expired, api client already triggers a redirect to /login.
       if (err instanceof ApiError && err.status === 401) {
@@ -363,7 +385,16 @@ export const MockApiProvider: React.FC<{ children: React.ReactNode }> = ({ child
         return doc;
       },
       setCurrentBusiness(id: string) {
-        setState((s) => ({ ...s, currentBusinessId: id }));
+        try {
+          window.localStorage.setItem(CURRENT_BUSINESS_STORAGE_KEY, id);
+        } catch {
+          // ignore
+        }
+        setState((s) => ({
+          ...s,
+          currentBusinessId: id,
+          user: s.user ? ({ ...s.user, currentBusinessId: id } as any) : s.user,
+        }));
       },
     };
   }, [state]);
