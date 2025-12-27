@@ -97,6 +97,41 @@ async function bootstrap() {
     });
   });
 
+  // Diagnostic endpoint - helps identify configuration issues
+  app.getHttpAdapter().get('/health/diag', async (req, res) => {
+    const checks: Record<string, string> = {};
+    
+    // Check critical env vars (don't reveal values, just presence)
+    checks.DATABASE_URL = process.env.DATABASE_URL ? '✅ set' : '❌ MISSING';
+    checks.JWT_SECRET = process.env.JWT_SECRET ? '✅ set' : '❌ MISSING';
+    checks.NODE_ENV = process.env.NODE_ENV || 'not set (defaults to development)';
+    
+    // Check optional but important env vars
+    checks.WEB_BASE_URL = process.env.WEB_BASE_URL || 'not set';
+    checks.ALLOW_DIRECT_PASSWORD_RESET = process.env.ALLOW_DIRECT_PASSWORD_RESET || 'not set';
+    
+    // Try a simple Prisma query to check DB connection
+    try {
+      // Get PrismaService from the app's IoC container
+      const { PrismaService } = await import('./prisma/prisma.service');
+      const prismaService = app.get(PrismaService);
+      await prismaService.$queryRaw`SELECT 1`;
+      checks.database_connection = '✅ connected';
+    } catch (dbErr: any) {
+      checks.database_connection = `❌ failed: ${dbErr.message?.slice(0, 100) || 'unknown error'}`;
+    }
+    
+    const allGood = checks.DATABASE_URL?.includes('✅') && 
+                    checks.JWT_SECRET?.includes('✅') && 
+                    checks.database_connection?.includes('✅');
+    
+    res.status(allGood ? 200 : 503).json({
+      status: allGood ? 'healthy' : 'unhealthy',
+      timestamp: new Date().toISOString(),
+      checks,
+    });
+  });
+
   // Root endpoint
   app.getHttpAdapter().get('/', (req, res) => {
     res.status(200).json({
