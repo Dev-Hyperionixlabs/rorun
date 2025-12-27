@@ -308,6 +308,59 @@ export class AuthService {
   }
 
   /**
+   * TESTING ONLY: Direct reset without email delivery.
+   * Enabled when ALLOW_DIRECT_PASSWORD_RESET=true OR when no EMAIL_PROVIDER_KEY is configured.
+   */
+  async resetPasswordDirect(
+    email: string,
+    newPassword: string,
+    ip?: string,
+    userAgent?: string,
+  ): Promise<{ ok: true }> {
+    const normalizedEmail = email.trim().toLowerCase();
+    if (newPassword.length < 8) {
+      throw new BadRequestException({
+        code: 'WEAK_PASSWORD',
+        message: 'Password must be at least 8 characters.',
+      });
+    }
+
+    const allow =
+      this.configService.get<string>('ALLOW_DIRECT_PASSWORD_RESET') === 'true' ||
+      !this.configService.get<string>('EMAIL_PROVIDER_KEY');
+    if (!allow) {
+      throw new BadRequestException({
+        code: 'RESET_DISABLED',
+        message: 'Password reset is not enabled. Please use the email reset flow.',
+      });
+    }
+
+    const prismaAny = this.prisma as any;
+    const user = await prismaAny.user.findUnique({ where: { email: normalizedEmail } });
+    // Avoid account enumeration; always return ok.
+    if (!user) return { ok: true };
+
+    const passwordHash = await bcrypt.hash(newPassword, 10);
+    await prismaAny.user.update({
+      where: { id: user.id },
+      data: { passwordHash },
+    });
+
+    await this.auditService.createAuditEvent({
+      businessId: null,
+      actorUserId: user.id,
+      action: 'auth.password_reset.direct',
+      entityType: 'User',
+      entityId: user.id,
+      metaJson: { email: normalizedEmail },
+      ip: ip ? String(ip) : null,
+      userAgent: userAgent ? String(userAgent) : null,
+    });
+
+    return { ok: true };
+  }
+
+  /**
    * TEMPORARY: Passwordless login without OTP.
    * Creates the user if needed, updates profile fields, and returns a JWT.
    * This is intended to unblock production while OTP providers are being wired.

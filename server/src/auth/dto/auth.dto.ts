@@ -87,3 +87,15 @@ export class ResetPasswordDto {
   @IsNotEmpty()
   password: string;
 }
+
+export class ResetPasswordDirectDto {
+  @ApiProperty({ example: 'teddy@company.com' })
+  @IsEmail()
+  @IsNotEmpty()
+  email: string;
+
+  @ApiProperty({ example: 'NewStrongPassword123' })
+  @IsString()
+  @IsNotEmpty()
+  password: string;
+}

@@ -6,12 +6,13 @@ import { PublicShell } from "@/components/public/PublicShell";
 import { AuthCard } from "@/components/auth-card";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import { requestPasswordReset } from "@/lib/api/auth";
+import { resetPasswordDirect } from "@/lib/api/auth";
 import { useToast } from "@/components/ui/toast";
 
 export default function ForgotPasswordPage() {
   const { addToast } = useToast();
   const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -20,7 +21,7 @@ export default function ForgotPasswordPage() {
       <main className="mx-auto flex w-full max-w-5xl flex-1 items-center justify-center px-4 py-10 md:px-6">
         <AuthCard
           title="Reset your password"
-          subtitle="Enter your email and we’ll send you a reset link."
+          subtitle="For now, set a new password directly so you can continue testing."
           footer={
             <>
               Remembered it?{" "}
@@ -43,15 +44,15 @@ export default function ForgotPasswordPage() {
               setSubmitting(true);
               setError(null);
               try {
-                await requestPasswordReset(email);
+                await resetPasswordDirect({ email, password });
                 addToast({
-                  title: "Check your inbox",
-                  description:
-                    "If an account exists for that email, we’ve sent a reset link.",
+                  title: "Password updated",
+                  description: "You can now log in with your new password.",
                   variant: "success",
                 });
+                window.location.href = "/login";
               } catch (err: any) {
-                setError(err?.message || "Could not request a reset link");
+                setError(err?.message || "Could not reset password");
               } finally {
                 setSubmitting(false);
               }
@@ -68,12 +69,25 @@ export default function ForgotPasswordPage() {
               />
             </div>
 
+            <div className="space-y-1 text-sm">
+              <label className="text-sm font-medium text-slate-800">
+                New password
+              </label>
+              <Input
+                type="password"
+                placeholder="At least 8 characters"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                required
+              />
+            </div>
+
             <Button
               type="submit"
               disabled={submitting}
               className="mt-2 w-full rounded-full py-2.5 text-sm font-semibold"
             >
-              {submitting ? "Sending…" : "Send reset link"}
+              {submitting ? "Updating…" : "Update password"}
             </Button>
           </form>
         </AuthCard>

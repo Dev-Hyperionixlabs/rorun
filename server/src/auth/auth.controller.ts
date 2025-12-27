@@ -2,7 +2,7 @@ import { Controller, Post, Body, UseGuards, Get, Request, HttpException, HttpSta
 import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
 import { AuthService } from './auth.service';
 import { JwtAuthGuard } from './guards/jwt-auth.guard';
-import { RequestOtpDto, VerifyOtpDto, SignupDto, EmailLoginDto, RequestPasswordResetDto, ResetPasswordDto } from './dto/auth.dto';
+import { RequestOtpDto, VerifyOtpDto, SignupDto, EmailLoginDto, RequestPasswordResetDto, ResetPasswordDto, ResetPasswordDirectDto } from './dto/auth.dto';
 import { Throttle } from '@nestjs/throttler';
 
 @ApiTags('auth')
@@ -45,6 +45,15 @@ export class AuthController {
     const ip = req.ip || req.headers['x-forwarded-for'] || req.connection?.remoteAddress;
     const userAgent = req.headers['user-agent'];
     return this.authService.resetPassword(dto.token, dto.password, ip, userAgent);
+  }
+
+  @Post('reset-password-direct')
+  @ApiOperation({ summary: 'Direct password reset (testing only)' })
+  @Throttle({ default: { limit: 10, ttl: 60_000 } })
+  async resetPasswordDirect(@Body() dto: ResetPasswordDirectDto, @Request() req) {
+    const ip = req.ip || req.headers['x-forwarded-for'] || req.connection?.remoteAddress;
+    const userAgent = req.headers['user-agent'];
+    return this.authService.resetPasswordDirect(dto.email, dto.password, ip, userAgent);
   }
 
   @Post('request-otp')

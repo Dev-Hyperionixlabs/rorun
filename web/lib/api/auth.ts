@@ -77,6 +77,18 @@ export async function resetPassword(args: {
   return { ok: true };
 }
 
+export async function resetPasswordDirect(args: {
+  email: string;
+  password: string;
+}): Promise<{ ok: true }> {
+  await api.post(
+    "/auth/reset-password-direct",
+    { email: args.email, password: args.password },
+    { skipAuth: true }
+  );
+  return { ok: true };
+}
+
 export async function logout(): Promise<void> {
   try {
     await api.post("/auth/logout");
