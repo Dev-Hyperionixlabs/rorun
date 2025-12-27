@@ -20,9 +20,21 @@ export default function SignupPage() {
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  // Persist form during navigation (back/forward) but clear on refresh
   useEffect(() => {
+    // Detect page refresh vs navigation
+    const navEntries = performance.getEntriesByType("navigation") as PerformanceNavigationTiming[];
+    const isRefresh = navEntries.length > 0 && navEntries[0].type === "reload";
+
+    if (isRefresh) {
+      // Clear draft on refresh
+      sessionStorage.removeItem("rorun_signup_draft_v1");
+      return;
+    }
+
+    // Restore draft on navigation (back/forward)
     try {
-      const raw = localStorage.getItem("rorun_signup_draft_v1");
+      const raw = sessionStorage.getItem("rorun_signup_draft_v1");
       if (!raw) return;
       const parsed = JSON.parse(raw) as { name?: string; email?: string };
       if (parsed?.name) setName(parsed.name);
@@ -32,9 +44,15 @@ export default function SignupPage() {
     }
   }, []);
 
+  // Save draft as user types (for back/forward navigation)
   useEffect(() => {
+    // Only save if there's actual content
+    if (!name && !email) {
+      sessionStorage.removeItem("rorun_signup_draft_v1");
+      return;
+    }
     try {
-      localStorage.setItem(
+      sessionStorage.setItem(
         "rorun_signup_draft_v1",
         JSON.stringify({ name, email })
       );
