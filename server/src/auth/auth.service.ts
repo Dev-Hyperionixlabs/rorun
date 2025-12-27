@@ -115,7 +115,23 @@ export class AuthService {
     }
 
     const payload = { sub: user.id, phone: user.phone, jti: crypto.randomUUID() };
-    const access_token = this.jwtService.sign(payload);
+    let access_token: string;
+    try {
+      access_token = this.jwtService.sign(payload);
+    } catch (err: any) {
+      const msg = String(err?.message || err);
+      if (msg.toLowerCase().includes('secret') && msg.toLowerCase().includes('value')) {
+        throw new BadRequestException({
+          code: 'JWT_SECRET_MISSING',
+          message:
+            'Server auth is misconfigured (JWT_SECRET missing). Set JWT_SECRET in the server environment and redeploy.',
+        });
+      }
+      throw new BadRequestException({
+        code: 'JWT_SIGN_FAILED',
+        message: 'Could not create a session token. Please try again shortly.',
+      });
+    }
 
     await this.auditService.createAuditEvent({
       businessId: null,
