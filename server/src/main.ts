@@ -117,6 +117,25 @@ async function bootstrap() {
       const prismaService = app.get(PrismaService);
       await prismaService.$queryRaw`SELECT 1`;
       checks.database_connection = '✅ connected';
+
+      // Schema drift checks (common production failure mode)
+      try {
+        const rows: any[] =
+          await prismaService.$queryRaw`SELECT 1 as ok FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'User' AND column_name = 'passwordHash' LIMIT 1`;
+        checks.user_passwordHash_column = rows?.length ? '✅ present' : '❌ MISSING (run prisma migrations)';
+      } catch (schemaErr: any) {
+        checks.user_passwordHash_column =
+          `⚠️ could not verify (information_schema): ${schemaErr?.message?.slice(0, 80) || 'unknown error'}`;
+      }
+
+      try {
+        const migrations: any[] =
+          await prismaService.$queryRaw`SELECT COUNT(*)::int as count FROM information_schema.tables WHERE table_schema = 'public' AND table_name = '_prisma_migrations'`;
+        checks.prisma_migrations_table = migrations?.[0]?.count ? '✅ present' : '⚠️ not found';
+      } catch (mErr: any) {
+        checks.prisma_migrations_table =
+          `⚠️ could not verify (_prisma_migrations): ${mErr?.message?.slice(0, 80) || 'unknown error'}`;
+      }
     } catch (dbErr: any) {
       checks.database_connection = `❌ failed: ${dbErr.message?.slice(0, 100) || 'unknown error'}`;
     }
