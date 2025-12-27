@@ -19,6 +19,18 @@ const steps = [
   "Turnover"
 ] as const;
 
+type OnboardingFormState = {
+  name: string;
+  role: BusinessRole | "";
+  legalForm: any;
+  sector: string;
+  state: string;
+  hasCAC: boolean;
+  hasTIN: boolean;
+  vatRegistered: boolean;
+  turnoverBand: any;
+};
+
 export default function OnboardingPage() {
   const router = useRouter();
   const { businesses, updateBusiness, evaluateEligibility } = useMockApi();
@@ -38,29 +50,31 @@ export default function OnboardingPage() {
 
   const isSeedBusiness = business?.name?.trim() === "Demo Ventures";
 
-  const [form, setForm] = useState(() => {
+  const defaultForm: OnboardingFormState = {
+    name: isSeedBusiness ? "" : business?.name ?? "",
+    role: (isSeedBusiness ? "" : (business?.role as BusinessRole)) as BusinessRole | "",
+    legalForm: (isSeedBusiness ? "" : (business as any)?.legalForm) as any,
+    sector: isSeedBusiness ? "" : business?.sector ?? "",
+    state: isSeedBusiness ? "" : business?.state ?? "",
+    hasCAC: isSeedBusiness ? false : (business as any)?.hasCAC ?? false,
+    hasTIN: isSeedBusiness ? false : (business as any)?.hasTIN ?? false,
+    vatRegistered: isSeedBusiness ? false : business?.vatRegistered ?? false,
+    turnoverBand: (isSeedBusiness ? "" : (business as any)?.turnoverBand) as any,
+  };
+
+  const [form, setForm] = useState<OnboardingFormState>(() => {
     if (typeof window !== "undefined") {
       try {
         const raw = localStorage.getItem("rorun_onboarding_draft_v1");
         if (raw) {
-          const parsed = JSON.parse(raw) as any;
-          if (parsed?.form) return parsed.form;
+          const parsed = JSON.parse(raw) as { form?: Partial<OnboardingFormState> };
+          if (parsed?.form) return { ...defaultForm, ...parsed.form };
         }
       } catch {
         // ignore
       }
     }
-    return {
-      name: isSeedBusiness ? "" : business?.name ?? "",
-      role: (isSeedBusiness ? "" : (business?.role as BusinessRole)) as BusinessRole | "",
-      legalForm: (isSeedBusiness ? "" : (business as any)?.legalForm) as any,
-      sector: isSeedBusiness ? "" : business?.sector ?? "",
-      state: isSeedBusiness ? "" : business?.state ?? "",
-      hasCAC: isSeedBusiness ? false : business?.hasCAC ?? false,
-      hasTIN: isSeedBusiness ? false : business?.hasTIN ?? false,
-      vatRegistered: isSeedBusiness ? false : business?.vatRegistered ?? false,
-      turnoverBand: (isSeedBusiness ? "" : (business as any)?.turnoverBand) as any,
-    };
+    return defaultForm;
   });
 
   // Persist draft so Back / refresh doesn't wipe the onboarding info.
