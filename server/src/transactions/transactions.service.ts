@@ -38,6 +38,10 @@ export class TransactionsService {
     // Verify business ownership
     await this.businessesService.findOne(businessId, userId);
 
+    // Normalize pagination params (support both skip/take and offset/limit)
+    const skip = query.skip ?? query.offset ?? 0;
+    const take = query.take ?? query.limit ?? 50;
+
     const where: any = {
       businessId,
     };
@@ -50,8 +54,16 @@ export class TransactionsService {
       where.categoryId = query.categoryId;
     }
 
+    // Year filter
+    if (query.year) {
+      where.date = {
+        gte: new Date(`${query.year}-01-01`),
+        lte: new Date(`${query.year}-12-31T23:59:59.999Z`),
+      };
+    }
+
     if (query.startDate || query.endDate) {
-      where.date = {};
+      where.date = where.date || {};
       if (query.startDate) {
         where.date.gte = new Date(query.startDate);
       }
@@ -81,17 +93,17 @@ export class TransactionsService {
         orderBy: {
           date: 'desc',
         },
-        skip: query.skip || 0,
-        take: query.take || 50,
+        skip,
+        take,
       }),
       this.prisma.transaction.count({ where }),
     ]);
 
     return {
-      data: transactions,
+      items: transactions,
       total,
-      skip: query.skip || 0,
-      take: query.take || 50,
+      skip,
+      take,
     };
   }
 

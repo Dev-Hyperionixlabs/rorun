@@ -123,4 +123,25 @@ export class TransactionQueryDto {
   @Min(1)
   @IsOptional()
   take?: number;
+
+  // Aliases for frontend compatibility
+  @ApiProperty({ required: false, description: 'Alias for take' })
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  @IsOptional()
+  limit?: number;
+
+  @ApiProperty({ required: false, description: 'Alias for skip' })
+  @Type(() => Number)
+  @IsInt()
+  @Min(0)
+  @IsOptional()
+  offset?: number;
+
+  @ApiProperty({ required: false, description: 'Tax year filter' })
+  @Type(() => Number)
+  @IsInt()
+  @IsOptional()
+  year?: number;
 }

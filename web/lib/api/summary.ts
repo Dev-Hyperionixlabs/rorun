@@ -7,7 +7,7 @@ export async function getYearSummary(
   businessId: string,
   year: number
 ): Promise<YearSummary> {
-  return api.get(`/businesses/${businessId}/summary?year=${year}`);
+  return api.get(`/businesses/${businessId}/reports/${year}/summary`);
 }
 
 export async function getFilingPacks(
@@ -41,4 +41,3 @@ export async function getLatestFilingPack(
     return null;
   }
 }
-
