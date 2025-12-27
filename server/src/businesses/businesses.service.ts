@@ -42,21 +42,35 @@ export class BusinessesService {
   }
 
   async findAll(userId: string) {
-    return this.prisma.business.findMany({
-      where: {
-        OR: [
-          { ownerUserId: userId },
-          { members: { some: { userId } } },
-        ],
-      },
-      include: {
-        subscriptions: {
-          include: {
-            plan: true,
+    try {
+      // Attempt full query with subscriptions (ideal path)
+      return await this.prisma.business.findMany({
+        where: {
+          OR: [
+            { ownerUserId: userId },
+            { members: { some: { userId } } },
+          ],
+        },
+        include: {
+          subscriptions: {
+            include: {
+              plan: true,
+            },
           },
         },
-      },
-    });
+      });
+    } catch (err: any) {
+      // If subscriptions/plan relation fails (schema drift), fall back to basic query
+      console.error('[BusinessesService.findAll] Full query failed, falling back:', err?.message);
+      return this.prisma.business.findMany({
+        where: {
+          OR: [
+            { ownerUserId: userId },
+            { members: { some: { userId } } },
+          ],
+        },
+      });
+    }
   }
 
   async findOne(id: string, userId: string) {
