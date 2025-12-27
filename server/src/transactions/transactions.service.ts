@@ -82,29 +82,40 @@ export class TransactionsService {
       }
     }
 
-    const [transactions, total] = await Promise.all([
-      this.prisma.transaction.findMany({
-        where,
-        include: {
-          category: true,
-          aiCategory: true,
-          documents: true,
-        },
-        orderBy: {
-          date: 'desc',
-        },
+    try {
+      const [transactions, total] = await Promise.all([
+        this.prisma.transaction.findMany({
+          where,
+          include: {
+            category: true,
+            aiCategory: true,
+            documents: true,
+          },
+          orderBy: {
+            date: 'desc',
+          },
+          skip,
+          take,
+        }),
+        this.prisma.transaction.count({ where }),
+      ]);
+
+      return {
+        items: transactions,
+        total,
         skip,
         take,
-      }),
-      this.prisma.transaction.count({ where }),
-    ]);
-
-    return {
-      items: transactions,
-      total,
-      skip,
-      take,
-    };
+      };
+    } catch (err: any) {
+      // If DB schema is missing tables/relations in prod, don't brick the dashboard.
+      console.error('[TransactionsService.findAll] Failed, returning empty list:', err?.message);
+      return {
+        items: [],
+        total: 0,
+        skip,
+        take,
+      };
+    }
   }
 
   async listCategories(businessId: string, userId: string) {

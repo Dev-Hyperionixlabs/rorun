@@ -93,11 +93,21 @@ export class BusinessesService {
     }
 
     if (business.ownerUserId !== userId) {
-      const member = await this.prisma.businessMember.findUnique({
-        where: { businessId_userId: { businessId: id, userId } },
-      });
-      if (!member) {
-        throw new ForbiddenException('You do not have access to this business');
+      try {
+        const member = await this.prisma.businessMember.findUnique({
+          where: { businessId_userId: { businessId: id, userId } },
+        });
+        if (!member) {
+          throw new ForbiddenException('You do not have access to this business');
+        }
+      } catch (err: any) {
+        // If businessMember table/constraint is missing (schema drift), avoid 500.
+        console.error('[BusinessesService.findOne] membership check failed:', err?.message);
+        throw new ForbiddenException({
+          code: 'BUSINESS_MEMBERS_UNAVAILABLE',
+          message:
+            'Workspace access could not be verified (membership data unavailable). If you are the owner, please re-login or contact support.',
+        } as any);
       }
     }
 
