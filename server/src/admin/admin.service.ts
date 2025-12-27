@@ -4,6 +4,7 @@ import { ConfigService } from '@nestjs/config';
 import { TaxSafetyService } from '../tax-safety/tax-safety.service';
 import { JwtService } from '@nestjs/jwt';
 import { ReportingService } from '../reporting/reporting.service';
+import { BankService } from '../bank/bank.service';
 
 @Injectable()
 export class AdminService {
@@ -13,6 +14,7 @@ export class AdminService {
     private taxSafetyService: TaxSafetyService,
     private jwtService: JwtService,
     private reportingService: ReportingService,
+    private bankService: BankService,
   ) {}
 
   validateAdminKey(key: string): boolean {
@@ -248,27 +250,8 @@ export class AdminService {
       year,
     );
 
-    // Upsert the filing pack record
-    const pack = await this.prisma.filingPack.upsert({
-      where: { businessId_taxYear: { businessId, taxYear: year } },
-      update: {
-        status: 'ready',
-        pdfUrl: packData.pdfUrl,
-        csvUrl: packData.csvUrl,
-        createdAt: new Date(),
-        createdByUserId: biz.ownerUserId,
-      },
-      create: {
-        businessId,
-        taxYear: year,
-        createdByUserId: biz.ownerUserId,
-        status: 'ready',
-        pdfUrl: packData.pdfUrl,
-        csvUrl: packData.csvUrl,
-      },
-    });
-
-    return { pack };
+    // Return generated storage keys. Filing packs are managed by the filing-pack module/job flow.
+    return { pack: packData };
   }
 
   async listWorkspaceAlerts(businessId: string, query: { limit?: number; offset?: number }) {
@@ -348,5 +331,60 @@ export class AdminService {
       transactionsYearToDate: totalTransactions,
       planBreakdown: planCounts,
     };
+  }
+
+  async getBankConnections() {
+    return this.prisma.bankConnection.findMany({
+      include: {
+        business: {
+          select: {
+            id: true,
+            name: true,
+            ownerUserId: true,
+          },
+        },
+        importEvents: {
+          orderBy: { createdAt: 'desc' },
+          take: 5,
+        },
+      },
+      orderBy: { createdAt: 'desc' },
+    });
+  }
+
+  async getBankConnectionEvents(connectionId: string) {
+    return this.prisma.bankImportEvent.findMany({
+      where: { bankConnectionId: connectionId },
+      orderBy: { createdAt: 'desc' },
+      take: 100,
+    });
+  }
+
+  async forceSyncBankConnection(connectionId: string) {
+    const connection = await this.prisma.bankConnection.findUnique({
+      where: { id: connectionId },
+      include: {
+        business: {
+          select: {
+            ownerUserId: true,
+          },
+        },
+      },
+    });
+
+    if (!connection) {
+      return { error: 'Connection not found' };
+    }
+
+    try {
+      const result = await this.bankService.syncConnection(
+        connectionId,
+        connection.businessId,
+        connection.business.ownerUserId,
+      );
+      return { success: true, result };
+    } catch (error: any) {
+      return { error: error.message };
+    }
   }
 }

@@ -13,7 +13,9 @@ const navItems = [
   { href: "/app/dashboard", label: "Dashboard" },
   { href: "/app/transactions", label: "Transactions" },
   { href: "/app/documents", label: "Documents" },
+  { href: "/app/review", label: "Review" },
   { href: "/app/summary", label: "Summary" },
+  { href: "/app/notifications", label: "Notifications" },
   { href: "/app/education", label: "Education" },
   { href: "/app/settings", label: "Settings" }
 ];

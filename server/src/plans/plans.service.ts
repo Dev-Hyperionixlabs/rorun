@@ -32,9 +32,10 @@ export class PlansService {
         userId,
         businessId,
         status: 'active',
-        endsAt: {
-          gte: new Date(),
-        },
+        OR: [
+          { endsAt: null },
+          { endsAt: { gte: new Date() } },
+        ],
       },
       include: {
         plan: {
@@ -50,5 +51,51 @@ export class PlansService {
     }
 
     return subscription.plan.features.some((f) => f.featureKey === featureKey);
+  }
+
+  async getEffectivePlan(userId: string, businessId: string) {
+    const subscription = await this.prisma.subscription.findFirst({
+      where: {
+        userId,
+        businessId,
+        status: 'active',
+        OR: [
+          { endsAt: null },
+          { endsAt: { gte: new Date() } },
+        ],
+      },
+      include: {
+        plan: {
+          include: {
+            features: true,
+          },
+        },
+      },
+      orderBy: {
+        startedAt: 'desc',
+      },
+    });
+
+    if (!subscription) {
+      // Return free plan as default
+      const freePlan = await this.prisma.plan.findUnique({
+        where: { id: 'free' },
+        include: { features: true },
+      });
+      return {
+        planId: 'free',
+        plan: freePlan,
+        features: freePlan?.features || [],
+      };
+    }
+
+    return {
+      planId: subscription.planId,
+      plan: subscription.plan,
+      features: subscription.plan.features.map((f) => ({
+        featureKey: f.featureKey,
+        limitValue: f.limitValue,
+      })),
+    };
   }
 }

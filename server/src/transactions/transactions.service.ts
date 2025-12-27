@@ -22,6 +22,9 @@ export class TransactionsService {
       data: {
         ...data,
         businessId,
+        // Manual entries default to business (deterministic + safe because user is explicitly recording)
+        classification: 'business',
+        isBusinessFlag: true,
       },
       include: {
         category: true,
@@ -92,6 +95,13 @@ export class TransactionsService {
     };
   }
 
+  async listCategories(businessId: string, userId: string) {
+    await this.businessesService.findOne(businessId, userId);
+    return this.prisma.transactionCategory.findMany({
+      orderBy: [{ displayOrder: 'asc' }, { name: 'asc' }],
+    });
+  }
+
   async findOne(id: string, userId: string) {
     const transaction = await this.prisma.transaction.findUnique({
       where: { id },
@@ -99,12 +109,7 @@ export class TransactionsService {
         category: true,
         aiCategory: true,
         documents: true,
-        business: {
-          select: {
-            id: true,
-            ownerUserId: true,
-          },
-        },
+        business: { select: { id: true } },
       },
     });
 
@@ -112,9 +117,8 @@ export class TransactionsService {
       throw new NotFoundException(`Transaction with ID ${id} not found`);
     }
 
-    if (transaction.business.ownerUserId !== userId) {
-      throw new NotFoundException(`Transaction with ID ${id} not found`);
-    }
+    // Membership-aware access check (owner/member/accountant)
+    await this.businessesService.findOne(transaction.business.id, userId);
 
     const { business, ...result } = transaction;
     void business;
@@ -143,5 +147,62 @@ export class TransactionsService {
     return this.prisma.transaction.delete({
       where: { id },
     });
+  }
+
+  async exportTransactions(businessId: string, userId: string, query: TransactionQueryDto) {
+    // Verify business ownership
+    await this.businessesService.findOne(businessId, userId);
+
+    const where: any = {
+      businessId,
+    };
+
+    if (query.type) {
+      where.type = query.type;
+    }
+
+    if (query.categoryId) {
+      where.categoryId = query.categoryId;
+    }
+
+    if (query.startDate || query.endDate) {
+      where.date = {};
+      if (query.startDate) {
+        where.date.gte = new Date(query.startDate);
+      }
+      if (query.endDate) {
+        where.date.lte = new Date(query.endDate);
+      }
+    }
+
+    const transactions = await this.prisma.transaction.findMany({
+      where,
+      include: {
+        category: true,
+      },
+      orderBy: {
+        date: 'desc',
+      },
+    });
+
+    // Generate CSV
+    const headers = ['Date', 'Type', 'Description', 'Amount', 'Currency', 'Category'];
+    const rows = transactions.map((t) => [
+      t.date.toISOString().split('T')[0],
+      t.type,
+      t.description || '',
+      t.amount.toString(),
+      t.currency,
+      t.category?.name || 'Uncategorised',
+    ]);
+
+    const csvContent = [headers, ...rows]
+      .map((row) => row.map((cell) => `"${cell}"`).join(','))
+      .join('\n');
+
+    return {
+      csv: csvContent,
+      count: transactions.length,
+    };
   }
 }

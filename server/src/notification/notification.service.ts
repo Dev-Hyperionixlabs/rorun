@@ -3,7 +3,7 @@ import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../prisma/prisma.service';
 import * as admin from 'firebase-admin';
 import { UpdateNotificationSettingsDto } from './notification-settings.dto';
-import { ForbiddenException } from '@nestjs/common';
+import { BusinessesService } from '../businesses/businesses.service';
 
 @Injectable()
 export class NotificationService {
@@ -12,6 +12,7 @@ export class NotificationService {
   constructor(
     private configService: ConfigService,
     private prisma: PrismaService,
+    private businessesService: BusinessesService,
   ) {
     const projectId = this.configService.get<string>('FIREBASE_PROJECT_ID');
     const privateKey = this.configService.get<string>('FIREBASE_PRIVATE_KEY');
@@ -71,7 +72,7 @@ export class NotificationService {
     payload: { title: string; body: string; data?: any },
   ) {
     if (!this.firebaseApp) {
-      console.log(`[DEV] Would send push notification to ${platform} device:`, payload);
+      // In production, configure Firebase env vars to enable push delivery.
       return;
     }
 
@@ -125,13 +126,7 @@ export class NotificationService {
   }
 
   async getSettings(businessId: string, userId: string) {
-    const business = await this.prisma.business.findUnique({
-      where: { id: businessId },
-      select: { ownerUserId: true },
-    });
-    if (!business || business.ownerUserId !== userId) {
-      throw new ForbiddenException();
-    }
+    await this.businessesService.findOne(businessId, userId);
 
     const settings = await this.prisma.notificationSetting.findUnique({
       where: { businessId },
@@ -150,13 +145,7 @@ export class NotificationService {
   }
 
   async updateSettings(businessId: string, userId: string, dto: UpdateNotificationSettingsDto) {
-    const business = await this.prisma.business.findUnique({
-      where: { id: businessId },
-      select: { ownerUserId: true },
-    });
-    if (!business || business.ownerUserId !== userId) {
-      throw new ForbiddenException();
-    }
+    await this.businessesService.findOne(businessId, userId);
 
     const exists = await this.prisma.notificationSetting.findUnique({
       where: { businessId },

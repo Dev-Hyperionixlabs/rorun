@@ -1,13 +1,18 @@
-import { Injectable, NotFoundException, ForbiddenException } from '@nestjs/common';
+import { Injectable, NotFoundException, ForbiddenException, Optional, Inject, forwardRef } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateBusinessDto, UpdateBusinessDto } from './dto/business.dto';
 
 @Injectable()
 export class BusinessesService {
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    @Optional()
+    @Inject(forwardRef(() => 'ComplianceTasksGenerator'))
+    private complianceTasksGenerator?: any,
+  ) {}
 
   async create(userId: string, data: CreateBusinessDto) {
-    return this.prisma.business.create({
+    const business = await this.prisma.business.create({
       data: {
         ...data,
         ownerUserId: userId,
@@ -23,12 +28,26 @@ export class BusinessesService {
         },
       },
     });
+
+    // Generate compliance tasks asynchronously (don't block creation)
+    if (this.complianceTasksGenerator) {
+      this.complianceTasksGenerator
+        .generateTasksForBusiness(business.id)
+        .catch((error: any) => {
+          console.error(`Failed to generate tasks for business ${business.id}:`, error);
+        });
+    }
+
+    return business;
   }
 
   async findAll(userId: string) {
     return this.prisma.business.findMany({
       where: {
-        ownerUserId: userId,
+        OR: [
+          { ownerUserId: userId },
+          { members: { some: { userId } } },
+        ],
       },
       include: {
         subscriptions: {
@@ -60,10 +79,29 @@ export class BusinessesService {
     }
 
     if (business.ownerUserId !== userId) {
-      throw new ForbiddenException('You do not have access to this business');
+      const member = await this.prisma.businessMember.findUnique({
+        where: { businessId_userId: { businessId: id, userId } },
+      });
+      if (!member) {
+        throw new ForbiddenException('You do not have access to this business');
+      }
     }
 
     return business;
+  }
+
+  async getMemberRole(businessId: string, userId: string): Promise<'owner' | 'member' | 'accountant' | null> {
+    const business = await this.prisma.business.findUnique({
+      where: { id: businessId },
+      select: { ownerUserId: true },
+    });
+    if (!business) return null;
+    if (business.ownerUserId === userId) return 'owner';
+    const member = await this.prisma.businessMember.findUnique({
+      where: { businessId_userId: { businessId, userId } },
+      select: { role: true },
+    });
+    return (member?.role as any) || null;
   }
 
   async update(id: string, userId: string, data: UpdateBusinessDto) {

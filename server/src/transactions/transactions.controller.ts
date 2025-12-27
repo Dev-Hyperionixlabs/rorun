@@ -9,10 +9,14 @@ import {
   Query,
   UseGuards,
   Request,
+  Res,
 } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiBearerAuth, ApiParam } from '@nestjs/swagger';
+import { Response } from 'express';
 import { TransactionsService } from './transactions.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
+import { PlanFeatureGuard, RequireFeature } from '../plans/guards/plan-feature.guard';
+import { BusinessRoleGuard, RequireBusinessRoles } from '../auth/guards/business-role.guard';
 import {
   CreateTransactionDto,
   UpdateTransactionDto,
@@ -44,6 +48,37 @@ export class TransactionsController {
     @Query() query: TransactionQueryDto,
   ) {
     return this.transactionsService.findAll(businessId, req.user.id, query);
+  }
+
+  @Get('categories')
+  @ApiOperation({ summary: 'List transaction categories' })
+  async listCategories(@Param('businessId') businessId: string, @Request() req) {
+    return this.transactionsService.listCategories(businessId, req.user.id);
+  }
+
+  @Get('export')
+  @UseGuards(BusinessRoleGuard)
+  @RequireBusinessRoles('owner', 'accountant')
+  @UseGuards(PlanFeatureGuard)
+  @RequireFeature('exportTransactions')
+  @ApiOperation({ summary: 'Export transactions as CSV' })
+  async export(
+    @Param('businessId') businessId: string,
+    @Request() req,
+    @Query() query: TransactionQueryDto,
+    @Res() res: Response,
+  ) {
+    const result = await this.transactionsService.exportTransactions(
+      businessId,
+      req.user.id,
+      query,
+    );
+    res.setHeader('Content-Type', 'text/csv');
+    res.setHeader(
+      'Content-Disposition',
+      `attachment; filename="transactions-${businessId}-${new Date().toISOString().split('T')[0]}.csv"`,
+    );
+    res.send(result.csv);
   }
 
   @Get(':id')

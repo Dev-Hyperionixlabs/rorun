@@ -3,6 +3,8 @@
 import { api } from "./client";
 import { Transaction } from "../types";
 
+export type { Transaction };
+
 export interface CreateTransactionInput {
   businessId: string;
   type: "income" | "expense";

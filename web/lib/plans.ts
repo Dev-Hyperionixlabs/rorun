@@ -13,7 +13,9 @@ export type PlanFeatureKey =
   | "multiUserAccess"
   | "enhancedSummaryReports"
   | "multiWorkspaceView"
-  | "prioritySupport";
+  | "prioritySupport"
+  | "bank_connect"
+  | "bank_auto_sync";
 
 export type PlanFeatures = Record<PlanFeatureKey, boolean>;
 
@@ -41,6 +43,8 @@ const baseFree: PlanFeatures = {
   enhancedSummaryReports: false,
   multiWorkspaceView: false,
   prioritySupport: false,
+  bank_connect: false,
+  bank_auto_sync: false,
 };
 
 export const PLANS: PlanMeta[] = [
@@ -118,6 +122,8 @@ export const FEATURE_LABELS: Record<PlanFeatureKey, string> = {
   enhancedSummaryReports: "Enhanced summary views & reporting",
   multiWorkspaceView: "Multi-workspace / multi-client view",
   prioritySupport: "Priority support",
+  bank_connect: "Connect your bank (read-only)",
+  bank_auto_sync: "Auto-sync bank transactions",
 };
 
 export function getPlanMeta(id: PlanId): PlanMeta {

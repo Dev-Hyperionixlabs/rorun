@@ -9,6 +9,7 @@ interface UseRecommendedActionsResult {
   isLoading: boolean;
   isError: boolean;
   usedApi: boolean;
+  refresh: () => Promise<void>;
 }
 
 export function useRecommendedActionsApi(
@@ -20,36 +21,26 @@ export function useRecommendedActionsApi(
   const [isError, setIsError] = useState<boolean>(false);
   const [usedApi, setUsedApi] = useState<boolean>(false);
 
-  useEffect(() => {
-    let cancelled = false;
-
-    async function load() {
-      setIsLoading(true);
-      setIsError(false);
-      try {
-        const data = await fetchRecommendedActions(businessId, year);
-        if (cancelled) return;
-        if (data) {
-          setActions(data);
-          setUsedApi(true);
-        }
-      } catch (e) {
-        if (!cancelled) {
-          setIsError(true);
-        }
-      } finally {
-        if (!cancelled) {
-          setIsLoading(false);
-        }
+  const loadActions = async () => {
+    setIsLoading(true);
+    setIsError(false);
+    try {
+      const data = await fetchRecommendedActions(businessId, year);
+      if (data) {
+        setActions(data);
+        setUsedApi(true);
       }
+    } catch (e) {
+      setIsError(true);
+    } finally {
+      setIsLoading(false);
     }
+  };
 
-    load();
-    return () => {
-      cancelled = true;
-    };
+  useEffect(() => {
+    loadActions();
   }, [businessId, year]);
 
-  return { actions, isLoading, isError, usedApi };
+  return { actions, isLoading, isError, usedApi, refresh: loadActions };
 }
 

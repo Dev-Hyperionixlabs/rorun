@@ -1,13 +1,17 @@
 "use client";
 
 import { useSearchParams } from "next/navigation";
-import { Suspense, useState } from "react";
+import { Suspense, useEffect, useState } from "react";
 import { useMockApi } from "@/lib/mock-api";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { TaxSafetyCard } from "@/components/tax-safety-card";
 import { RecommendedActionsSection } from "@/components/recommended-actions";
+import { ComplianceTasksCard } from "@/components/compliance-tasks-card";
 import { useFilingPack } from "@/hooks/use-filing-pack";
+import { getBusinesses } from "@/lib/api/businesses";
+import { getReviewIssues } from "@/lib/api/review";
+import Link from "next/link";
 
 export default function DashboardPage() {
   return (
@@ -20,17 +24,43 @@ export default function DashboardPage() {
 function DashboardContent() {
   const searchParams = useSearchParams();
   const { businesses, transactions, alerts, currentPlanId } = useMockApi();
+  const [businessId, setBusinessId] = useState<string | null>(null);
+  const [openIssuesCount, setOpenIssuesCount] = useState<number>(0);
 
   const business = businesses[0];
   const year = new Date().getFullYear();
   // Hooks must be called unconditionally - use fallback ID if business is null
-  const { pack, isLoading: packLoading, generate } = useFilingPack(business?.id || "", year);
+  const { pack, isLoading: packLoading, generate } = useFilingPack(
+    business?.id || businessId || "",
+    year
+  );
   const [packError, setPackError] = useState<string | null>(null);
 
   if (!business) {
     return <div className="text-sm text-slate-500">Loading dashboard…</div>;
   }
 
+  useEffect(() => {
+    loadBusiness();
+  }, []);
+
+  const loadBusiness = async () => {
+    try {
+      const businesses = await getBusinesses();
+      if (businesses && businesses.length > 0) {
+        setBusinessId(businesses[0].id);
+        try {
+          const year = new Date().getFullYear();
+          const issues = await getReviewIssues(businesses[0].id, { taxYear: year, status: "open" });
+          setOpenIssuesCount(issues.length);
+        } catch {
+          setOpenIssuesCount(0);
+        }
+      }
+    } catch (error: any) {
+      console.error("Failed to load business:", error);
+    }
+  };
   const income = transactions
     .filter((t) => t.type === "income")
     .reduce((sum, t) => sum + t.amount, 0);
@@ -78,8 +108,36 @@ function DashboardContent() {
         </div>
       )}
 
+      {/* Tax Safety Hero */}
+      <TaxSafetyCard />
+
+      {businessId && (
+        <Card className="bg-white">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm font-semibold text-slate-900">Review issues</CardTitle>
+          </CardHeader>
+          <CardContent className="flex items-center justify-between gap-3">
+            <div className="text-sm text-slate-600">
+              {openIssuesCount > 0
+                ? `You have ${openIssuesCount} open issue${openIssuesCount !== 1 ? "s" : ""} to review.`
+                : "No open issues right now."}
+            </div>
+            <Link href="/app/review">
+              <Button variant={openIssuesCount > 0 ? "primary" : "secondary"}>
+                {openIssuesCount > 0 ? "Fix now" : "View"}
+              </Button>
+            </Link>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Next Actions - Compliance Tasks */}
+      {businessId && <ComplianceTasksCard businessId={businessId} />}
+
+      {/* Top 3 Recommended Actions */}
+      <RecommendedActionsSection />
+
       <div className="grid gap-4 md:grid-cols-3">
-        <TaxSafetyCard />
         <Card className="md:col-span-2">
           <CardHeader>
             <div>

@@ -30,14 +30,15 @@ export class RecommendedActionsService {
     const planId = (subscription?.plan?.id?.toLowerCase?.() as PlanId) ?? 'free';
     const score = await this.taxSafetyService.getTaxSafetyScore(businessId, userId, taxYear);
 
-    const [missingMonths, highValueWithoutDocs, obligations, latestPack] = await Promise.all([
+    const [missingMonths, highValueWithoutDocs, obligations, latestPack, actionStates] = await Promise.all([
       this.findMonthsWithNoTransactions(businessId, taxYear),
       this.findHighValueTransactionsWithoutDocs(businessId, taxYear, 5),
       this.findObligations(businessId, taxYear),
       this.filingPacksService.getLatestFilingPack(businessId, userId, taxYear),
+      this.getActionStates(businessId, taxYear),
     ]);
 
-    return this.buildActionsFromContext({
+    const actions = this.buildActionsFromContext({
       businessId,
       taxYear,
       score,
@@ -46,6 +47,103 @@ export class RecommendedActionsService {
       highValueWithoutDocs,
       obligations,
       latestPack,
+    });
+
+    // Filter out completed/dismissed actions and add status
+    const actionStateMap = new Map<string, any>();
+    for (const s of actionStates as any[]) {
+      actionStateMap.set(`${s.actionType}-${businessId}-${taxYear}`, s);
+    }
+
+    return actions
+      .map((action) => {
+        const state: any = actionStateMap.get(action.id);
+        if (state?.status === 'completed' || state?.status === 'dismissed') {
+          return null;
+        }
+        return {
+          ...action,
+          status: state?.status || 'open',
+          completedAt: state?.completedAt || null,
+          dismissedAt: state?.dismissedAt || null,
+        };
+      })
+      .filter((a) => a !== null) as any;
+  }
+
+  async completeAction(
+    businessId: string,
+    userId: string,
+    actionType: string,
+    taxYear: number,
+    meta?: any,
+  ) {
+    await this.businessesService.findOne(businessId, userId);
+
+    const actionState = await this.prisma.actionState.upsert({
+      where: {
+        businessId_actionType_taxYear: {
+          businessId,
+          actionType,
+          taxYear,
+        },
+      },
+      update: {
+        status: 'completed',
+        completedAt: new Date(),
+        metaJson: meta || null,
+      },
+      create: {
+        businessId,
+        actionType,
+        taxYear,
+        status: 'completed',
+        completedAt: new Date(),
+        metaJson: meta || null,
+      },
+    });
+
+    return { success: true, actionState };
+  }
+
+  async dismissAction(
+    businessId: string,
+    userId: string,
+    actionType: string,
+    taxYear: number,
+  ) {
+    await this.businessesService.findOne(businessId, userId);
+
+    const actionState = await this.prisma.actionState.upsert({
+      where: {
+        businessId_actionType_taxYear: {
+          businessId,
+          actionType,
+          taxYear,
+        },
+      },
+      update: {
+        status: 'dismissed',
+        dismissedAt: new Date(),
+      },
+      create: {
+        businessId,
+        actionType,
+        taxYear,
+        status: 'dismissed',
+        dismissedAt: new Date(),
+      },
+    });
+
+    return { success: true, actionState };
+  }
+
+  private async getActionStates(businessId: string, taxYear: number) {
+    return this.prisma.actionState.findMany({
+      where: {
+        businessId,
+        taxYear,
+      },
     });
   }
 

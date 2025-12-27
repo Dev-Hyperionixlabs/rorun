@@ -184,4 +184,34 @@ export class AdminController {
     this.validateAdmin(headers);
     return this.adminService.getDashboardStats();
   }
+
+  @Get('bank-connections')
+  @ApiHeader({ name: 'x-admin-key', required: true })
+  @ApiOperation({ summary: 'Get all bank connections across businesses (admin)' })
+  async getBankConnections(@Headers() headers: any) {
+    this.validateAdmin(headers);
+    return this.adminService.getBankConnections();
+  }
+
+  @Get('bank-connections/:connectionId/events')
+  @ApiHeader({ name: 'x-admin-key', required: true })
+  @ApiOperation({ summary: 'Get import events for a bank connection (admin)' })
+  async getBankConnectionEvents(
+    @Headers() headers: any,
+    @Param('connectionId') connectionId: string,
+  ) {
+    this.validateAdmin(headers);
+    return this.adminService.getBankConnectionEvents(connectionId);
+  }
+
+  @Post('bank-connections/:connectionId/sync')
+  @ApiHeader({ name: 'x-admin-key', required: true })
+  @ApiOperation({ summary: 'Force sync a bank connection (admin)' })
+  async forceSyncBankConnection(
+    @Headers() headers: any,
+    @Param('connectionId') connectionId: string,
+  ) {
+    this.validateAdmin(headers);
+    return this.adminService.forceSyncBankConnection(connectionId);
+  }
 }

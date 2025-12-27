@@ -65,18 +65,15 @@ export class InvoicesService {
       where: { id },
       include: {
         items: true,
-        business: {
-          select: {
-            id: true,
-            ownerUserId: true,
-          },
-        },
+        business: { select: { id: true } },
       },
     });
 
-    if (!invoice || invoice.business.ownerUserId !== userId) {
+    if (!invoice) {
       throw new NotFoundException(`Invoice with ID ${id} not found`);
     }
+
+    await this.businessesService.findOne(invoice.business.id, userId);
 
     const { business, ...result } = invoice;
     void business;

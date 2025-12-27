@@ -14,6 +14,7 @@ import { ApiTags, ApiOperation, ApiBearerAuth, ApiParam, ApiQuery } from '@nestj
 import { DocumentsService } from './documents.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { CreateDocumentDto, UpdateDocumentDto } from './dto/document.dto';
+import { BusinessRoleGuard, RequireBusinessRoles } from '../auth/guards/business-role.guard';
 
 @ApiTags('documents')
 @Controller('businesses/:businessId/documents')
@@ -23,6 +24,8 @@ export class DocumentsController {
   constructor(private readonly documentsService: DocumentsService) {}
 
   @Post('upload-url')
+  @UseGuards(BusinessRoleGuard)
+  @RequireBusinessRoles('owner', 'member', 'accountant')
   @ApiOperation({ summary: 'Get signed URL for document upload' })
   async getUploadUrl(
     @Param('businessId') businessId: string,
@@ -38,6 +41,8 @@ export class DocumentsController {
   }
 
   @Post()
+  @UseGuards(BusinessRoleGuard)
+  @RequireBusinessRoles('owner', 'member', 'accountant')
   @ApiOperation({ summary: 'Register uploaded document' })
   async create(
     @Param('businessId') businessId: string,
@@ -48,6 +53,8 @@ export class DocumentsController {
   }
 
   @Get()
+  @UseGuards(BusinessRoleGuard)
+  @RequireBusinessRoles('owner', 'member', 'accountant')
   @ApiQuery({ name: 'transactionId', required: false })
   @ApiOperation({ summary: 'Get all documents for a business' })
   async findAll(
@@ -59,6 +66,8 @@ export class DocumentsController {
   }
 
   @Get(':id')
+  @UseGuards(BusinessRoleGuard)
+  @RequireBusinessRoles('owner', 'member', 'accountant')
   @ApiParam({ name: 'id', description: 'Document ID' })
   @ApiOperation({ summary: 'Get document by ID' })
   async findOne(@Param('id') id: string, @Request() req) {
@@ -66,6 +75,8 @@ export class DocumentsController {
   }
 
   @Put(':id')
+  @UseGuards(BusinessRoleGuard)
+  @RequireBusinessRoles('owner', 'member', 'accountant')
   @ApiParam({ name: 'id', description: 'Document ID' })
   @ApiOperation({ summary: 'Update document (e.g., link to transaction)' })
   async update(@Param('id') id: string, @Request() req, @Body() dto: UpdateDocumentDto) {
@@ -73,6 +84,8 @@ export class DocumentsController {
   }
 
   @Delete(':id')
+  @UseGuards(BusinessRoleGuard)
+  @RequireBusinessRoles('owner', 'member', 'accountant')
   @ApiParam({ name: 'id', description: 'Document ID' })
   @ApiOperation({ summary: 'Delete document' })
   async remove(@Param('id') id: string, @Request() req) {

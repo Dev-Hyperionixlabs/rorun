@@ -29,7 +29,8 @@ export class ApiError extends Error {
   constructor(
     public status: number,
     message: string,
-    public code?: string
+    public code?: string,
+    public data?: any
   ) {
     super(message);
     this.name = "ApiError";
@@ -79,9 +80,10 @@ export async function apiRequest<T = any>(
     if (!res.ok) {
       let errorMessage = `Request failed (${res.status})`;
       let errorCode: string | undefined;
+      let errorData: any = {};
 
       try {
-        const errorData = await res.json();
+        errorData = await res.json();
         errorMessage = errorData.message || errorMessage;
         errorCode = errorData.code;
       } catch {
@@ -89,7 +91,7 @@ export async function apiRequest<T = any>(
         errorMessage = res.statusText || errorMessage;
       }
 
-      throw new ApiError(res.status, errorMessage, errorCode);
+      throw new ApiError(res.status, errorMessage, errorCode, errorData);
     }
 
     // Handle empty responses

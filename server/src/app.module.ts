@@ -25,6 +25,19 @@ import { SchedulerModule } from './scheduler/scheduler.module';
 import { TaxSafetyModule } from './tax-safety/tax-safety.module';
 import { RecommendedActionsModule } from './recommended-actions/recommended-actions.module';
 import { FilingPacksModule } from './filing-packs/filing-packs.module';
+import { ImportsModule } from './imports/imports.module';
+import { BankModule } from './bank/bank.module';
+import { AuditModule } from './audit/audit.module';
+import { UsageMeterModule } from './usage/usage-meter.module';
+import { ComplianceTasksModule } from './compliance-tasks/compliance-tasks.module';
+import { FilingWizardModule } from './filing-wizard/filing-wizard.module';
+import { NotificationsModule } from './notifications/notifications.module';
+import { TaxRulesModule } from './tax-rules/tax-rules.module';
+import { ReviewModule } from './review/review.module';
+import { OtpModule } from './otp/otp.module';
+import { PaymentsModule } from './payments/payments.module';
+import { ThrottlerModule, ThrottlerGuard } from '@nestjs/throttler';
+import { APP_GUARD } from '@nestjs/core';
 
 @Module({
   imports: [
@@ -63,6 +76,29 @@ import { FilingPacksModule } from './filing-packs/filing-packs.module';
     TaxSafetyModule,
     RecommendedActionsModule,
     FilingPacksModule,
+    ImportsModule,
+    BankModule,
+    AuditModule,
+    UsageMeterModule,
+    ComplianceTasksModule,
+    FilingWizardModule,
+    NotificationsModule,
+    TaxRulesModule,
+    ReviewModule,
+    OtpModule,
+    PaymentsModule,
+    ThrottlerModule.forRoot([
+      {
+        ttl: 60000, // 1 minute
+        limit: 60, // 60 requests per minute
+      },
+    ]),
+  ],
+  providers: [
+    {
+      provide: APP_GUARD,
+      useClass: ThrottlerGuard,
+    },
   ],
 })
 export class AppModule {}

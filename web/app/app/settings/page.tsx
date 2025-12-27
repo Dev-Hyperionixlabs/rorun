@@ -1,6 +1,7 @@
 "use client";
 
 import { useSearchParams, useRouter } from "next/navigation";
+import { Check } from "lucide-react";
 import { useEffect, useMemo, useState, Suspense } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -13,7 +14,13 @@ import clsx from "clsx";
 import { getCurrentPlan, setCurrentPlanApi } from "@/lib/api/plan";
 import { updateProfileApi } from "@/lib/api/profile";
 import { updateBusinessApi } from "@/lib/api/business";
-import { updateNotificationSettingsApi, getNotificationSettingsApi } from "@/lib/api/notifications";
+import {
+  getNotificationPreferences,
+  updateNotificationPreference,
+  NotificationPreference,
+} from "@/lib/api/notifications";
+import { useFeatures } from "@/hooks/use-features";
+import { Lock } from "lucide-react";
 
 const tabs = [
   { id: "plan", label: "Plan" },
@@ -77,31 +84,118 @@ function PlanSettingsSection() {
   const { currentPlanId, setCurrentPlan, businesses } = useMockApi();
   const business = businesses[0];
   const [error, setError] = useState<string | null>(null);
+  const [loading, setLoading] = useState<string | null>(null);
+  const [billingStatus, setBillingStatus] = useState<any>(null);
+  const searchParams = useSearchParams();
+  const router = useRouter();
 
   useEffect(() => {
     async function load() {
       if (!business) return;
       try {
+        // Check for payment success
+        const status = searchParams.get("status");
+        if (status === "success") {
+          // Poll billing status until active
+          const pollStatus = async () => {
+            try {
+              const { getBillingStatus } = await import("@/lib/api/billing");
+              const status = await getBillingStatus(business.id);
+              setBillingStatus(status);
+              if (status.subscription?.status === "active") {
+                router.replace("/app/settings?tab=plan");
+              } else {
+                setTimeout(pollStatus, 2000);
+              }
+            } catch (e) {
+              console.error("Failed to poll billing status", e);
+            }
+          };
+          pollStatus();
+        }
+
         const planId = await getCurrentPlan(business.id);
         if (planId) setCurrentPlan(planId);
+
+        // Load billing status
+        try {
+          const { getBillingStatus } = await import("@/lib/api/billing");
+          const status = await getBillingStatus(business.id);
+          setBillingStatus(status);
+        } catch {
+          // Ignore if billing API not available
+        }
       } catch {
         // ignore and keep mock state
       }
     }
     load();
-  }, [business, setCurrentPlan]);
+  }, [business, setCurrentPlan, searchParams, router]);
 
-  const handleSelect = (id: PlanId) => {
-    setError(null);
-    setCurrentPlan(id);
+  const handleSelect = async (id: PlanId) => {
     if (!business) return;
-    setCurrentPlanApi(business.id, id).catch((e) => {
-      setError(e?.message || "Failed to update plan");
-    });
+    setError(null);
+    setLoading(id);
+
+    try {
+      if (id === "free") {
+        // Free plan - no payment needed
+        setCurrentPlan(id);
+        await setCurrentPlanApi(business.id, id);
+      } else {
+        // Paid plan - create checkout session
+        const { createCheckoutSession } = await import("@/lib/api/billing");
+        const { authorizationUrl } = await createCheckoutSession(business.id, id);
+        // Redirect to Paystack
+        window.location.href = authorizationUrl;
+        return; // Don't clear loading state, we're redirecting
+      }
+    } catch (e: any) {
+      setError(e?.message || "Failed to start checkout");
+    } finally {
+      setLoading(null);
+    }
   };
+
+  const currentSubscription = billingStatus?.subscription;
+  const isProcessing = searchParams.get("status") === "success" && currentSubscription?.status !== "active";
 
   return (
     <div className="space-y-4">
+      {currentSubscription && (
+        <Card className="bg-white">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm font-semibold text-slate-900">
+              Current Subscription
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="text-sm text-slate-600 space-y-2">
+            <div className="flex items-center justify-between">
+              <span>Status:</span>
+              <span className={clsx(
+                "font-semibold",
+                currentSubscription.status === "active" ? "text-emerald-600" : "text-amber-600"
+              )}>
+                {currentSubscription.status === "active" ? "Active" : 
+                 currentSubscription.status === "past_due" ? "Past Due" :
+                 currentSubscription.status === "canceled" ? "Canceled" : currentSubscription.status}
+              </span>
+            </div>
+            {currentSubscription.currentPeriodEnd && (
+              <div className="flex items-center justify-between">
+                <span>Next renewal:</span>
+                <span>{new Date(currentSubscription.currentPeriodEnd).toLocaleDateString()}</span>
+              </div>
+            )}
+            {isProcessing && (
+              <p className="text-xs text-amber-600 mt-2">
+                Payment processing... Please wait while we confirm your subscription.
+              </p>
+            )}
+          </CardContent>
+        </Card>
+      )}
+
       <Card className="bg-white">
         <CardHeader className="pb-2">
           <CardTitle className="text-sm font-semibold text-slate-900">
@@ -109,7 +203,7 @@ function PlanSettingsSection() {
           </CardTitle>
         </CardHeader>
         <CardContent className="text-sm text-slate-600">
-          Choose a plan to preview gated features. Billing is not wired yet in this demo.
+          Upgrade to unlock more features. Payment is processed securely via Paystack.
           {error && <p className="mt-2 text-xs font-semibold text-rose-600">{error}</p>}
         </CardContent>
       </Card>
@@ -159,10 +253,11 @@ function PlanSettingsSection() {
                   </button>
                 ) : (
                   <button
-                    className="w-full rounded-full bg-emerald-600 px-3 py-2 text-xs font-semibold text-white hover:bg-emerald-700"
+                    className="w-full rounded-full bg-emerald-600 px-3 py-2 text-xs font-semibold text-white hover:bg-emerald-700 disabled:opacity-50 disabled:cursor-not-allowed"
                     onClick={() => handleSelect(plan.id)}
+                    disabled={loading === plan.id || isProcessing}
                   >
-                    Choose {plan.name}
+                    {loading === plan.id ? "Processing..." : plan.id === "accountant" ? "Contact us" : `Choose ${plan.name}`}
                   </button>
                 )}
               </div>
@@ -299,131 +394,158 @@ function WorkspaceSettingsSection() {
 function NotificationsSettingsSection() {
   const { businesses } = useMockApi();
   const business = businesses[0];
-  const [dueSoon, setDueSoon] = useState(true);
-  const [veryClose, setVeryClose] = useState(true);
-  const [monthlyReminder, setMonthlyReminder] = useState(true);
-  const [missingReceipts, setMissingReceipts] = useState(true);
-  const [loading, setLoading] = useState(false);
+  const [preferences, setPreferences] = useState<NotificationPreference[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const { hasFeature } = useFeatures(business?.id || null);
 
   // Hooks must be called unconditionally
   useEffect(() => {
     if (!business) return;
-    let mounted = true;
-    async function load() {
-      if (!business) return;
-      try {
-        const settings = await getNotificationSettingsApi(business.id);
-        if (settings && mounted) {
-          setDueSoon(settings.deadlineDueSoon);
-          setVeryClose(settings.deadlineVerySoon);
-          setMonthlyReminder(settings.monthlyReminder);
-          setMissingReceipts(settings.missingReceipts);
-        }
-      } catch {
-        // ignore, stay default
-      }
-    }
-    load();
-    return () => {
-      mounted = false;
-    };
+    loadPreferences();
   }, [business]);
 
-  if (!business) {
-    return (
-      <Card className="bg-white">
-        <CardContent className="py-6 text-sm text-slate-500">
-          Loading notification settings...
-        </CardContent>
-      </Card>
-    );
-  }
-
-  const persist = async (next: {
-    deadlineDueSoon: boolean;
-    deadlineVerySoon: boolean;
-    monthlyReminder: boolean;
-    missingReceipts: boolean;
-  }) => {
+  const loadPreferences = async () => {
     if (!business) return;
-    setLoading(true);
-    setError(null);
     try {
-      await updateNotificationSettingsApi(business.id, next);
+      setLoading(true);
+      const prefs = await getNotificationPreferences(business.id);
+      setPreferences(prefs);
     } catch (e: any) {
-      setError(e?.message || "Failed to save notification settings");
+      setError(e?.message || "Failed to load preferences");
     } finally {
       setLoading(false);
     }
   };
 
+  const getPreference = (channel: "in_app" | "email" | "sms") => {
+    return preferences.find((p) => p.channel === channel);
+  };
+
+  const updatePreference = async (
+    channel: "in_app" | "email" | "sms",
+    enabled: boolean,
+    rulesJson?: NotificationPreference["rulesJson"]
+  ) => {
+    if (!business) return;
+    setSaving(channel);
+    setError(null);
+    try {
+      const updated = await updateNotificationPreference(business.id, channel, enabled, rulesJson);
+      setPreferences((prev) => {
+        const filtered = prev.filter((p) => p.channel !== channel);
+        return [...filtered, updated];
+      });
+    } catch (e: any) {
+      setError(e?.message || "Failed to update preference");
+    } finally {
+      setSaving(null);
+    }
+  };
+
+  const inAppPref = getPreference("in_app");
+  const emailPref = getPreference("email");
+  const smsPref = getPreference("sms");
+
+  const canUseEmail = hasFeature("yearEndFilingPack"); // Basic+
+  const canUseSms = hasFeature("enhancedSummaryReports"); // Business+
+
+  if (loading) {
+    return (
+      <Card className="bg-white">
+        <CardContent className="py-6">
+          <p className="text-sm text-slate-500">Loading notification preferences...</p>
+        </CardContent>
+      </Card>
+    );
+  }
+
   return (
-    <Card className="bg-white">
-      <CardHeader className="pb-2">
-        <CardTitle className="text-sm font-semibold text-slate-900">Notifications</CardTitle>
-      </CardHeader>
-      <CardContent className="space-y-3">
-        <ToggleRow
-          label="Deadline reminders (due soon)"
-          description="Get notified when filings are coming up."
-          checked={dueSoon}
-          onChange={(v) => {
-            setDueSoon(v);
-            persist({
-              deadlineDueSoon: v,
-              deadlineVerySoon: veryClose,
-              monthlyReminder,
-              missingReceipts,
-            });
-          }}
-        />
-        <ToggleRow
-          label="Deadline reminders (very close)"
-          description="Stronger reminders when you are days away."
-          checked={veryClose}
-          onChange={(v) => {
-            setVeryClose(v);
-            persist({
-              deadlineDueSoon: dueSoon,
-              deadlineVerySoon: v,
-              monthlyReminder,
-              missingReceipts,
-            });
-          }}
-        />
-        <ToggleRow
-          label="Monthly “log your activity” reminder"
-          description="Stay on top of records coverage."
-          checked={monthlyReminder}
-          onChange={(v) => {
-            setMonthlyReminder(v);
-            persist({
-              deadlineDueSoon: dueSoon,
-              deadlineVerySoon: veryClose,
-              monthlyReminder: v,
-              missingReceipts,
-            });
-          }}
-        />
-        <ToggleRow
-          label="High-value transaction missing receipt alerts"
-          description="Get alerted when big expenses are missing receipts."
-          checked={missingReceipts}
-          onChange={(v) => {
-            setMissingReceipts(v);
-            persist({
-              deadlineDueSoon: dueSoon,
-              deadlineVerySoon: veryClose,
-              monthlyReminder,
-              missingReceipts: v,
-            });
-          }}
-        />
-        {error && <p className="text-xs font-semibold text-rose-600">{error}</p>}
-        {loading && <p className="text-xs text-slate-500">Saving…</p>}
-      </CardContent>
-    </Card>
+    <div className="space-y-4">
+      <Card className="bg-white">
+        <CardHeader className="pb-2">
+          <CardTitle className="text-sm font-semibold text-slate-900">Notification Channels</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          <ToggleRow
+            label="In-app reminders"
+            description="See notifications in your dashboard (Free+)"
+            checked={inAppPref?.enabled ?? true}
+            onChange={(v) => updatePreference("in_app", v)}
+            disabled={saving === "in_app"}
+          />
+
+          <div className="relative">
+            <ToggleRow
+              label="Email reminders"
+              description="Get notified via email (Basic+)"
+              checked={emailPref?.enabled ?? false}
+              onChange={(v) => updatePreference("email", v)}
+              disabled={!canUseEmail || saving === "email"}
+            />
+            {!canUseEmail && (
+              <div className="absolute inset-0 flex items-center justify-end pr-3 pointer-events-none">
+                <Lock className="h-4 w-4 text-amber-500" />
+              </div>
+            )}
+          </div>
+
+          <div className="relative">
+            <ToggleRow
+              label="SMS reminders"
+              description="Get notified via SMS (Business+)"
+              checked={smsPref?.enabled ?? false}
+              onChange={(v) => updatePreference("sms", v)}
+              disabled={!canUseSms || saving === "sms"}
+            />
+            {!canUseSms && (
+              <div className="absolute inset-0 flex items-center justify-end pr-3 pointer-events-none">
+                <Lock className="h-4 w-4 text-amber-500" />
+              </div>
+            )}
+          </div>
+
+          {error && <p className="text-xs font-semibold text-rose-600">{error}</p>}
+        </CardContent>
+      </Card>
+
+      {emailPref?.enabled && canUseEmail && (
+        <Card className="bg-white">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm font-semibold text-slate-900">Email Settings</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            <div className="space-y-2">
+              <label className="text-sm font-medium text-slate-800">
+                Remind me about deadlines
+              </label>
+              <p className="text-xs text-slate-500">
+                Days before deadline:{" "}
+                {emailPref.rulesJson?.deadlineDays?.join(", ") || "7, 3, 1"}
+              </p>
+              {canUseSms && (
+                <p className="text-xs text-amber-600">
+                  Custom schedule available in Business+ plan
+                </p>
+              )}
+            </div>
+            <ToggleRow
+              label="Daily overdue digest"
+              description="Get a summary of overdue tasks each evening"
+              checked={emailPref.rulesJson?.dailyDigest !== false}
+              onChange={(v) =>
+                updatePreference("email", true, {
+                  ...emailPref.rulesJson,
+                  dailyDigest: v,
+                })
+              }
+              disabled={saving === "email"}
+            />
+          </CardContent>
+        </Card>
+      )}
+    </div>
   );
 }
 

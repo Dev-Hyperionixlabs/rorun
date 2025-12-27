@@ -3,6 +3,7 @@ import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
 import { AuthService } from './auth.service';
 import { JwtAuthGuard } from './guards/jwt-auth.guard';
 import { RequestOtpDto, VerifyOtpDto } from './dto/auth.dto';
+import { Throttle } from '@nestjs/throttler';
 
 @ApiTags('auth')
 @Controller('auth')
@@ -11,14 +12,20 @@ export class AuthController {
 
   @Post('request-otp')
   @ApiOperation({ summary: 'Request OTP for phone number' })
-  async requestOtp(@Body() dto: RequestOtpDto) {
-    return this.authService.requestOtp(dto.phone);
+  @Throttle({ default: { limit: 3, ttl: 60_000 } }) // per-IP baseline; per-phone enforced in service
+  async requestOtp(@Body() dto: RequestOtpDto, @Request() req) {
+    const ip = req.ip || req.headers['x-forwarded-for'] || req.connection?.remoteAddress;
+    const userAgent = req.headers['user-agent'];
+    return this.authService.requestOtp(dto.phone, ip, userAgent);
   }
 
   @Post('verify-otp')
   @ApiOperation({ summary: 'Verify OTP and get access token' })
-  async verifyOtp(@Body() dto: VerifyOtpDto) {
-    return this.authService.verifyOtp(dto.phone, dto.otp);
+  @Throttle({ default: { limit: 10, ttl: 60_000 } })
+  async verifyOtp(@Body() dto: VerifyOtpDto, @Request() req) {
+    const ip = req.ip || req.headers['x-forwarded-for'] || req.connection?.remoteAddress;
+    const userAgent = req.headers['user-agent'];
+    return this.authService.verifyOtp(dto.phone, dto.otp, ip, userAgent);
   }
 
   @Post('logout')

@@ -1,38 +1,65 @@
-import { API_BASE, authHeaders } from "./client";
+import { api } from "./client";
 
-export async function getNotificationSettingsApi(businessId: string) {
-  if (!API_BASE) return null;
-  const res = await fetch(`${API_BASE}/businesses/${businessId}/notification-settings`, {
-    credentials: "include",
-    headers: authHeaders(),
-  });
-  if (!res.ok) return null;
-  return res.json();
+export interface NotificationPreference {
+  id: string;
+  businessId: string;
+  userId: string;
+  channel: "in_app" | "email" | "sms";
+  enabled: boolean;
+  rulesJson: {
+    deadlineDays?: number[];
+    dailyDigest?: boolean;
+    quietHours?: {
+      start: string;
+      end: string;
+      tz: string;
+    };
+  };
+  createdAt: string;
+  updatedAt: string;
 }
 
-export async function updateNotificationSettingsApi(
+export interface NotificationEvent {
+  id: string;
+  businessId: string;
+  userId: string | null;
+  type: "deadline_reminder" | "task_overdue" | "accountant_request" | "filing_pack_ready";
+  channel: "in_app" | "email" | "sms";
+  status: "queued" | "sent" | "failed" | "skipped";
+  provider: string | null;
+  to: string | null;
+  subject: string | null;
+  bodyPreview: string | null;
+  metaJson: any;
+  errorMessage: string | null;
+  sentAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export async function getNotificationPreferences(
+  businessId: string
+): Promise<NotificationPreference[]> {
+  return api.get(`/businesses/${businessId}/notifications/preferences`);
+}
+
+export async function updateNotificationPreference(
   businessId: string,
-  data: {
-    deadlineDueSoon: boolean;
-    deadlineVerySoon: boolean;
-    monthlyReminder: boolean;
-    missingReceipts: boolean;
-  }
-) {
-  if (!API_BASE) return null;
-  const res = await fetch(`${API_BASE}/businesses/${businessId}/notification-settings`, {
-    method: "PUT",
-    credentials: "include",
-    headers: {
-      "Content-Type": "application/json",
-      ...authHeaders(),
-    },
-    body: JSON.stringify(data),
+  channel: "in_app" | "email" | "sms",
+  enabled: boolean,
+  rulesJson?: NotificationPreference["rulesJson"]
+): Promise<NotificationPreference> {
+  return api.post(`/businesses/${businessId}/notifications/preferences`, {
+    channel,
+    enabled,
+    rulesJson,
   });
-  if (!res.ok) {
-    const text = await res.text();
-    throw new Error(text || `Failed to update notification settings (${res.status})`);
-  }
-  return res.json();
 }
 
+export async function getNotificationFeed(
+  businessId: string,
+  limit?: number
+): Promise<NotificationEvent[]> {
+  const query = limit ? `?limit=${limit}` : "";
+  return api.get(`/businesses/${businessId}/notifications/feed${query}`);
+}

@@ -13,7 +13,9 @@ export type PlanFeatureKey =
   | 'multiUserAccess'
   | 'enhancedSummaryReports'
   | 'multiWorkspaceView'
-  | 'prioritySupport';
+  | 'prioritySupport'
+  | 'bank_connect'
+  | 'bank_auto_sync';
 
 export type PlanFeatures = Record<PlanFeatureKey, boolean>;
 
@@ -31,6 +33,8 @@ const baseFree: PlanFeatures = {
   enhancedSummaryReports: false,
   multiWorkspaceView: false,
   prioritySupport: false,
+  bank_connect: false,
+  bank_auto_sync: false,
 };
 
 export const planFeaturesMap: Record<PlanId, PlanFeatures> = {
@@ -51,6 +55,8 @@ export const planFeaturesMap: Record<PlanId, PlanFeatures> = {
     advancedReminders: true,
     multiUserAccess: true,
     enhancedSummaryReports: true,
+    bank_connect: true,
+    bank_auto_sync: true,
   },
   accountant: {
     ...baseFree,
@@ -62,6 +68,8 @@ export const planFeaturesMap: Record<PlanId, PlanFeatures> = {
     enhancedSummaryReports: true,
     multiWorkspaceView: true,
     prioritySupport: true,
+    bank_connect: true,
+    bank_auto_sync: true,
   },
 };
 

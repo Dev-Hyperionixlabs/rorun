@@ -2,6 +2,7 @@ import { NestFactory } from '@nestjs/core';
 import { ValidationPipe, Logger } from '@nestjs/common';
 import { SwaggerModule, DocumentBuilder } from '@nestjs/swagger';
 import { AppModule } from './app.module';
+import { json } from 'express';
 
 async function bootstrap() {
   const logger = new Logger('Bootstrap');
@@ -10,6 +11,15 @@ async function bootstrap() {
   const app = await NestFactory.create(AppModule, {
     logger: isProduction ? ['error', 'warn', 'log'] : ['error', 'warn', 'log', 'debug', 'verbose'],
   });
+
+  // Capture raw request body for webhook signature verification (e.g. Paystack)
+  app.use(
+    json({
+      verify: (req: any, _res, buf) => {
+        req.rawBody = buf;
+      },
+    }),
+  );
 
   // Enable CORS
   const allowedOrigins = process.env.ALLOWED_ORIGINS?.split(',') || [

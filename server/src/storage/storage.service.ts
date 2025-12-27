@@ -61,6 +61,32 @@ export class StorageService {
     return this.s3.getSignedUrlPromise('getObject', params);
   }
 
+  async headObject(key: string): Promise<{ contentType?: string; contentLength?: number }> {
+    const head = await this.s3
+      .headObject({
+        Bucket: this.bucket,
+        Key: key,
+      })
+      .promise();
+    return {
+      contentType: head.ContentType,
+      contentLength: head.ContentLength,
+    };
+  }
+
+  async getObjectRange(key: string, bytes: number): Promise<Buffer> {
+    const res = await this.s3
+      .getObject({
+        Bucket: this.bucket,
+        Key: key,
+        Range: `bytes=0-${Math.max(0, bytes - 1)}`,
+      })
+      .promise();
+    const body = res.Body;
+    if (!body) return Buffer.alloc(0);
+    return Buffer.isBuffer(body) ? body : Buffer.from(body as any);
+  }
+
   async deleteFile(key: string): Promise<void> {
     await this.s3
       .deleteObject({

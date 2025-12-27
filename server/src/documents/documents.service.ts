@@ -1,9 +1,11 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { BusinessesService } from '../businesses/businesses.service';
 import { StorageService } from '../storage/storage.service';
 import { AiService } from '../ai/ai.service';
 import { CreateDocumentDto, UpdateDocumentDto } from './dto/document.dto';
+import * as crypto from 'crypto';
+import { scanUploadedObject } from '../security/scan';
 
 @Injectable()
 export class DocumentsService {
@@ -14,10 +16,51 @@ export class DocumentsService {
     private aiService: AiService,
   ) {}
 
+  private readonly MAX_UPLOAD_BYTES = 10 * 1024 * 1024; // 10MB
+  private readonly ALLOWED_MIME = new Set(['application/pdf', 'image/jpeg', 'image/png']);
+
+  private extForMime(mimeType: string): string {
+    switch (mimeType) {
+      case 'application/pdf':
+        return 'pdf';
+      case 'image/jpeg':
+        return 'jpg';
+      case 'image/png':
+        return 'png';
+      default:
+        return 'bin';
+    }
+  }
+
+  private verifyMagicBytes(mimeType: string, header: Buffer): boolean {
+    if (mimeType === 'application/pdf') {
+      return header.subarray(0, 4).toString('utf8') === '%PDF';
+    }
+    if (mimeType === 'image/png') {
+      const sig = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
+      return header.subarray(0, 8).equals(sig);
+    }
+    if (mimeType === 'image/jpeg') {
+      // JPEG starts with FF D8 FF
+      return header.length >= 3 && header[0] === 0xff && header[1] === 0xd8 && header[2] === 0xff;
+    }
+    return false;
+  }
+
   async createUploadUrl(businessId: string, userId: string, filename: string, mimeType: string) {
     await this.businessesService.findOne(businessId, userId);
 
-    const key = `businesses/${businessId}/documents/${Date.now()}-${filename}`;
+    if (!this.ALLOWED_MIME.has(mimeType)) {
+      throw new BadRequestException({
+        code: 'UPLOAD_TYPE_NOT_ALLOWED',
+        message: 'File type not allowed. Allowed: PDF, JPG, PNG',
+      });
+    }
+
+    // Prevent path traversal and arbitrary filenames: store as UUID
+    const ext = this.extForMime(mimeType);
+    const safeId = crypto.randomUUID();
+    const key = `businesses/${businessId}/documents/${safeId}.${ext}`;
     const uploadUrl = await this.storageService.getSignedUploadUrl(key, mimeType);
 
     return {
@@ -28,6 +71,53 @@ export class DocumentsService {
 
   async create(businessId: string, userId: string, data: CreateDocumentDto) {
     await this.businessesService.findOne(businessId, userId);
+
+    if (!this.ALLOWED_MIME.has(data.mimeType)) {
+      throw new BadRequestException({
+        code: 'UPLOAD_TYPE_NOT_ALLOWED',
+        message: 'File type not allowed. Allowed: PDF, JPG, PNG',
+      });
+    }
+
+    if (data.size > this.MAX_UPLOAD_BYTES) {
+      throw new BadRequestException({
+        code: 'UPLOAD_TOO_LARGE',
+        message: `File too large. Max size is ${this.MAX_UPLOAD_BYTES} bytes`,
+      });
+    }
+
+    // Storage path safety: must match expected prefix
+    const prefix = `businesses/${businessId}/documents/`;
+    if (!data.storageUrl || !data.storageUrl.startsWith(prefix) || data.storageUrl.includes('..')) {
+      throw new BadRequestException({
+        code: 'UPLOAD_PATH_INVALID',
+        message: 'Invalid storage key',
+      });
+    }
+
+    // Verify uploaded object exists, size, and magic bytes (deterministic)
+    const head = await this.storageService.headObject(data.storageUrl);
+    if (!head.contentLength || head.contentLength <= 0) {
+      throw new BadRequestException({ code: 'UPLOAD_NOT_FOUND', message: 'Uploaded file not found' });
+    }
+    if (head.contentLength > this.MAX_UPLOAD_BYTES) {
+      throw new BadRequestException({ code: 'UPLOAD_TOO_LARGE', message: 'File too large' });
+    }
+    const header = await this.storageService.getObjectRange(data.storageUrl, 16);
+    if (!this.verifyMagicBytes(data.mimeType, header)) {
+      throw new BadRequestException({
+        code: 'UPLOAD_TYPE_NOT_ALLOWED',
+        message: 'File signature does not match allowed types',
+      });
+    }
+
+    const scan = await scanUploadedObject(data.storageUrl);
+    if (!scan.ok) {
+      throw new BadRequestException({
+        code: 'UPLOAD_REJECTED',
+        message: ('reason' in scan ? scan.reason : undefined) || 'Upload rejected',
+      });
+    }
 
     const document = await this.prisma.document.create({
       data: {
@@ -75,7 +165,6 @@ export class DocumentsService {
         business: {
           select: {
             id: true,
-            ownerUserId: true,
           },
         },
       },
@@ -85,9 +174,8 @@ export class DocumentsService {
       throw new NotFoundException(`Document with ID ${id} not found`);
     }
 
-    if (document.business.ownerUserId !== userId) {
-      throw new NotFoundException(`Document with ID ${id} not found`);
-    }
+    // Membership-aware access check (owner/member/accountant)
+    await this.businessesService.findOne(document.business.id, userId);
 
     const viewUrl = await this.storageService.getSignedDownloadUrl(document.storageUrl);
 

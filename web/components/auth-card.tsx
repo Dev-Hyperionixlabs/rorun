@@ -2,6 +2,7 @@
 
 import * as React from "react";
 import Image from "next/image";
+import { Card, CardContent } from "@/components/ui/card";
 
 interface AuthCardProps {
   title: string;
@@ -12,8 +13,8 @@ interface AuthCardProps {
 
 export function AuthCard({ title, subtitle, children, footer }: AuthCardProps) {
   return (
-    <div className="flex min-h-screen items-center justify-center bg-slate-50 px-4">
-      <div className="w-full max-w-xl rounded-3xl bg-white p-8 shadow-lg">
+    <Card className="w-full max-w-xl rounded-3xl">
+      <CardContent className="p-8 md:p-8">
         <div className="mb-6 flex justify-center">
           <Image
             src="/logo.png"
@@ -26,9 +27,7 @@ export function AuthCard({ title, subtitle, children, footer }: AuthCardProps) {
         </div>
         <div className="space-y-1">
           <h1 className="text-xl font-semibold text-slate-900">{title}</h1>
-          {subtitle && (
-            <p className="text-xs text-slate-500 leading-relaxed">{subtitle}</p>
-          )}
+          {subtitle && <p className="text-xs text-slate-500 leading-relaxed">{subtitle}</p>}
         </div>
         <div className="mt-6 space-y-4">{children}</div>
         {footer && (
@@ -36,8 +35,8 @@ export function AuthCard({ title, subtitle, children, footer }: AuthCardProps) {
             {footer}
           </div>
         )}
-      </div>
-    </div>
+      </CardContent>
+    </Card>
   );
 }
 

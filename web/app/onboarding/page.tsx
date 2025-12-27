@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { useMockApi } from "@/lib/mock-api";
-import { BUSINESS_ROLES, BusinessRole, NIGERIAN_STATES } from "@/lib/types";
+import { BusinessRole, NIGERIAN_STATES } from "@/lib/types";
 import { Select } from "@/components/ui/select";
 
 const steps = [
@@ -25,17 +25,26 @@ export default function OnboardingPage() {
   const [step, setStep] = useState(0);
   const [loading, setLoading] = useState(false);
 
+  const isSeedBusiness = business?.name?.trim() === "Demo Ventures";
+
   const [form, setForm] = useState(() => ({
-    name: business?.name ?? "",
-    role: (business?.role as BusinessRole) ?? "Owner",
-    legalForm: business?.legalForm ?? "sole_proprietor",
-    sector: business?.sector ?? "Retail / Trade",
-    state: business?.state ?? "",
-    hasCAC: business?.hasCAC ?? false,
-    hasTIN: business?.hasTIN ?? false,
-    vatRegistered: business?.vatRegistered ?? false,
-    turnoverBand: (business as any)?.turnoverBand ?? "<25m"
+    name: isSeedBusiness ? "" : business?.name ?? "",
+    role: (isSeedBusiness ? "" : (business?.role as BusinessRole)) as BusinessRole | "",
+    legalForm: (isSeedBusiness ? "" : (business as any)?.legalForm) as any,
+    sector: isSeedBusiness ? "" : business?.sector ?? "",
+    state: isSeedBusiness ? "" : business?.state ?? "",
+    hasCAC: isSeedBusiness ? false : business?.hasCAC ?? false,
+    hasTIN: isSeedBusiness ? false : business?.hasTIN ?? false,
+    vatRegistered: isSeedBusiness ? false : business?.vatRegistered ?? false,
+    turnoverBand: (isSeedBusiness ? "" : (business as any)?.turnoverBand) as any,
   }));
+
+  const canContinue =
+    (step === 0 && form.name.trim().length > 0 && !!form.role) ||
+    (step === 1 && !!form.legalForm) ||
+    (step === 2 && !!form.sector && !!form.state) ||
+    (step === 3 && true) ||
+    (step === 4 && !!form.turnoverBand);
 
   const goNext = () => {
     if (step < steps.length - 1) setStep((s) => s + 1);
@@ -48,7 +57,12 @@ export default function OnboardingPage() {
   const handleSubmit = async () => {
     setLoading(true);
     if (business?.id) {
-      updateBusiness(business.id, form);
+      updateBusiness(business.id, {
+        ...form,
+        role: (form.role || undefined) as any,
+        legalForm: (form.legalForm || undefined) as any,
+        turnoverBand: (form.turnoverBand || undefined) as any,
+      });
       await evaluateEligibility(business.id);
     }
     setLoading(false);
@@ -103,7 +117,7 @@ export default function OnboardingPage() {
                   onChange={(e) =>
                     setForm((f) => ({ ...f, name: e.target.value }))
                   }
-                  placeholder="e.g. Sunrise Traders"
+                  placeholder="e.g. Chuks Logistics"
                 />
               </div>
               <div className="space-y-1">
@@ -111,15 +125,18 @@ export default function OnboardingPage() {
                   Your role in the business
                 </label>
                 <Select
-                  value={form.role}
+                  value={form.role || ""}
                   onChange={(value) =>
                     setForm((f) => ({ ...f, role: value as BusinessRole }))
                   }
-                  placeholder="Select role"
-                  options={BUSINESS_ROLES.map((role) => ({
-                    value: role,
-                    label: role
-                  }))}
+                  placeholder="Select your role"
+                  options={[
+                    { value: "Owner", label: "Owner" },
+                    { value: "Co-owner / Partner", label: "Co-founder" },
+                    { value: "Manager", label: "Manager" },
+                    { value: "Accountant / Finance", label: "Accountant" },
+                    { value: "Operations / Staff", label: "Staff" }
+                  ]}
                 />
               </div>
             </div>
@@ -187,20 +204,19 @@ export default function OnboardingPage() {
                 <label className="text-sm font-medium text-slate-800">
                   Main sector
                 </label>
-                <select
-                  className="h-10 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-1"
+                <Select
                   value={form.sector}
-                  onChange={(e) =>
-                    setForm((f) => ({ ...f, sector: e.target.value }))
-                  }
-                >
-                  <option>Retail / Trade</option>
-                  <option>Food &amp; Drinks</option>
-                  <option>Professional services</option>
-                  <option>Tech / Online business</option>
-                  <option>Manufacturing</option>
-                  <option>Other</option>
-                </select>
+                  onChange={(value) => setForm((f) => ({ ...f, sector: value }))}
+                  placeholder="Select sector"
+                  options={[
+                    { value: "Retail / Trade", label: "Retail / Trade" },
+                    { value: "Food & Drinks", label: "Food & Drinks" },
+                    { value: "Professional services", label: "Professional services" },
+                    { value: "Tech / Online business", label: "Tech / Online business" },
+                    { value: "Manufacturing", label: "Manufacturing" },
+                    { value: "Other", label: "Other" }
+                  ]}
+                />
               </div>
               <div className="space-y-1">
                 <label className="text-sm font-medium text-slate-800">
@@ -223,7 +239,7 @@ export default function OnboardingPage() {
             <div className="space-y-3 text-sm">
               <p className="text-slate-600">
                 What registration do you already have? It&apos;s okay if some are
-                &quot;No&quot; for now.
+                &quot;No&quot; yet.
               </p>
               <div className="space-y-2">
                 {[
@@ -353,7 +369,7 @@ export default function OnboardingPage() {
               Back
             </Button>
             {step < steps.length - 1 ? (
-              <Button type="button" size="sm" onClick={goNext}>
+              <Button type="button" size="sm" onClick={goNext} disabled={!canContinue}>
                 Continue
               </Button>
             ) : (
@@ -362,6 +378,7 @@ export default function OnboardingPage() {
                 size="sm"
                 onClick={handleSubmit}
                 loading={loading}
+                disabled={!canContinue}
               >
                 See my tax safety
               </Button>

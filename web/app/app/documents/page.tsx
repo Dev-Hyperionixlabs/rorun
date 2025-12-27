@@ -1,6 +1,7 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { Suspense, useRef, useState, useMemo } from "react";
+import { useSearchParams } from "next/navigation";
 import { useMockApi } from "@/lib/mock-api";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -8,10 +9,38 @@ import { Upload, FileText, Eye } from "lucide-react";
 import { useToast } from "@/components/ui/toast";
 
 export default function DocumentsPage() {
-  const { documents, addDocument, loading } = useMockApi();
+  return (
+    <Suspense fallback={<div className="p-6 text-sm text-slate-500">Loading…</div>}>
+      <DocumentsPageInner />
+    </Suspense>
+  );
+}
+
+function DocumentsPageInner() {
+  const searchParams = useSearchParams();
+  const filter = searchParams.get("filter");
+  const { documents, addDocument, transactions, loading } = useMockApi();
   const { addToast } = useToast();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [uploading, setUploading] = useState(false);
+
+  // Find high-value transactions without receipts
+  const highValueWithoutDocs = useMemo(() => {
+    if (filter !== "missing-receipts") return [];
+    const HIGH_VALUE_THRESHOLD = 50000; // ₦50,000
+    const currentYear = new Date().getFullYear();
+    return transactions
+      .filter((tx) => {
+        const d = new Date(tx.date);
+        return (
+          d.getFullYear() === currentYear &&
+          tx.type === "expense" &&
+          tx.amount >= HIGH_VALUE_THRESHOLD &&
+          !tx.hasDocument
+        );
+      })
+      .slice(0, 5);
+  }, [filter, transactions]);
 
   const handleUploadClick = () => {
     fileInputRef.current?.click();
@@ -70,6 +99,31 @@ export default function DocumentsPage() {
         className="hidden"
         onChange={handleFileChange}
       />
+
+      {filter === "missing-receipts" && highValueWithoutDocs.length > 0 && (
+        <Card className="bg-amber-50 border-amber-200">
+          <CardContent className="py-4">
+            <div className="space-y-2">
+              <p className="text-sm font-semibold text-amber-900">
+                High-value expenses missing receipts
+              </p>
+              <p className="text-xs text-amber-700">
+                {highValueWithoutDocs.length} expense{highValueWithoutDocs.length > 1 ? "s" : ""} over ₦50,000 without receipts. Upload receipts to improve your tax safety score.
+              </p>
+              <div className="flex flex-wrap gap-2 mt-2">
+                {highValueWithoutDocs.map((tx) => (
+                  <div
+                    key={tx.id}
+                    className="text-xs bg-white px-2 py-1 rounded border border-amber-200"
+                  >
+                    {tx.description} • ₦{tx.amount.toLocaleString()}
+                  </div>
+                ))}
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       {documents.length === 0 ? (
         <Card className="bg-white">

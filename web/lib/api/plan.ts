@@ -1,33 +1,24 @@
 import { PlanId } from "../plans";
-import { API_BASE, authHeaders } from "./client";
+import { api } from "./client";
 
 export async function getCurrentPlan(businessId: string): Promise<PlanId | null> {
-  if (!API_BASE) return null;
-  const res = await fetch(`${API_BASE}/businesses/${businessId}/plan`, {
-    credentials: "include",
-    headers: authHeaders(),
-  });
-  if (!res.ok) return null;
-  const data = await res.json();
-  return (data?.planId as PlanId) ?? null;
+  try {
+    const data = await api.get<{ planId: string }>(`/businesses/${businessId}/plan`);
+    return (data?.planId as PlanId) ?? null;
+  } catch {
+    return null;
+  }
 }
 
-export async function setCurrentPlanApi(businessId: string, planId: PlanId) {
-  if (!API_BASE) return null;
-  const res = await fetch(`${API_BASE}/businesses/${businessId}/plan`, {
-    method: "POST",
-    credentials: "include",
-    headers: {
-      "Content-Type": "application/json",
-      ...authHeaders(),
-    },
-    body: JSON.stringify({ planId }),
-  });
-  if (!res.ok) {
-    const text = await res.text();
-    throw new Error(text || `Failed to set plan (${res.status})`);
-  }
-  const data = await res.json();
-  return data?.planId as PlanId;
+export async function setCurrentPlanApi(businessId: string, planId: PlanId): Promise<PlanId> {
+  const data = await api.post<{ planId: string }>(`/businesses/${businessId}/plan`, { planId });
+  return data.planId as PlanId;
+}
+
+export async function getEffectivePlan(businessId: string) {
+  return api.get<{
+    planId: string;
+    features: Array<{ featureKey: string; limitValue?: number | null }>;
+  }>(`/plans/effective?businessId=${businessId}`);
 }
 

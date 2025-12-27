@@ -105,6 +105,8 @@ async function main() {
           { featureKey: 'advancedReminders', limitValue: 1 },
           { featureKey: 'multiUserAccess', limitValue: 5 },
           { featureKey: 'enhancedSummaryReports', limitValue: 1 },
+          { featureKey: 'bank_connect', limitValue: 1 },
+          { featureKey: 'bank_auto_sync', limitValue: 1 },
         ],
       },
     },
@@ -130,6 +132,8 @@ async function main() {
           { featureKey: 'enhancedSummaryReports', limitValue: 1 },
           { featureKey: 'multiWorkspaceView', limitValue: 1 },
           { featureKey: 'prioritySupport', limitValue: 1 },
+          { featureKey: 'bank_connect', limitValue: 1 },
+          { featureKey: 'bank_auto_sync', limitValue: 1 },
         ],
       },
     },
@@ -279,107 +283,119 @@ Value Added Tax (VAT) in Nigeria is charged at **7.5%** on goods and services.
     },
   });
 
-  // Seed a default user and business with a subscription and sample data
-  const defaultUser = await prisma.user.upsert({
-    where: { phone: '+2348012345678' },
-    update: {
-      name: 'Rorun User',
-      email: 'user@rorun.ng',
-      languagePref: 'en',
-    },
-    create: {
-      phone: '+2348012345678',
-      name: 'Rorun User',
-      email: 'user@rorun.ng',
-      languagePref: 'en',
-    },
-  });
-
-  const defaultBusiness = await prisma.business.upsert({
-    where: { id: 'seed-biz-1' },
+  // NOTE: We intentionally do not seed demo users/businesses/transactions here.
+  // Create default tax rule set (Phase 11)
+  const defaultRuleSet = await prisma.taxRuleSet.upsert({
+    where: { version: '2026.1' },
     update: {},
     create: {
-      id: 'seed-biz-1',
-      ownerUserId: defaultUser.id,
-      name: 'Sunrise Traders',
-      legalForm: 'sole_proprietor',
-      sector: 'Retail / Trade',
-      state: 'Lagos',
-      cacNumber: 'CAC-123456',
-      tin: 'TIN-987654',
-      vatRegistered: false,
-    estimatedTurnoverBand: '<25m',
-    },
-  });
-
-  await prisma.subscription.upsert({
-    where: { id: 'seed-sub-1' },
-    update: {},
-    create: {
-      id: 'seed-sub-1',
-      userId: defaultUser.id,
-      businessId: defaultBusiness.id,
-      planId: basicPlan.id,
+      version: '2026.1',
+      name: 'Nigeria SME Tax Reform 2026 - v1',
       status: 'active',
-      startedAt: new Date(),
+      effectiveFrom: new Date(Date.now() - 24 * 60 * 60 * 1000), // 1 day ago
+      description: 'Default rule set for Nigeria 2026 tax year. Contains placeholder rules that must be updated with authoritative legal criteria.',
     },
   });
 
-  const now = new Date();
-  await prisma.transaction.createMany({
-    data: [
-      {
-        businessId: defaultBusiness.id,
-        type: 'income',
-        amount: 7500000,
-        currency: 'NGN',
-        date: now,
-        description: 'Monthly sales revenue',
-        source: 'manual',
-        categoryId: null,
+  // Create default baseline rule (sets unknown status)
+  await prisma.taxRuleV2.upsert({
+    where: {
+      ruleSetId_key: {
+        ruleSetId: defaultRuleSet.id,
+        key: 'baseline_unknown',
       },
-      {
-        businessId: defaultBusiness.id,
-        type: 'expense',
-        amount: 2100000,
-        currency: 'NGN',
-        date: now,
-        description: 'Inventory and logistics',
-        source: 'manual',
-        categoryId: null,
+    },
+    update: {},
+    create: {
+      ruleSetId: defaultRuleSet.id,
+      key: 'baseline_unknown',
+      type: 'eligibility',
+      priority: 1000, // High priority (evaluated last)
+      conditionsJson: {}, // Always matches (empty condition)
+      outcomeJson: {
+        citStatus: 'unknown',
+        vatStatus: 'unknown',
+        whtStatus: 'unknown',
+        complianceNote: 'Rule not configured. Please update with authoritative criteria.',
       },
-    ],
-    skipDuplicates: true,
+      explanation: 'Default rule: No specific rules matched. This is a placeholder and must be updated with legal criteria.',
+    },
   });
 
-  await prisma.alert.createMany({
-    data: [
-      {
-        id: 'seed-alert-1',
-        businessId: defaultBusiness.id,
-        type: 'deadline_threshold',
-        messageKey: 'annual_return_due',
-        severity: 'warning',
-        payloadJson: {
-          title: 'Annual return due in 45 days',
-          message: 'Prepare filings and supporting documents for this tax year.',
-        },
-        createdAt: now,
+  // Create placeholder SME zero-tax rule (example - must be updated)
+  await prisma.taxRuleV2.upsert({
+    where: {
+      ruleSetId_key: {
+        ruleSetId: defaultRuleSet.id,
+        key: 'cit_eligibility_small_business_placeholder',
       },
-      {
-        id: 'seed-alert-2',
-        businessId: defaultBusiness.id,
-        type: 'threshold',
-        messageKey: 'turnover_threshold',
-        severity: 'info',
-        payloadJson: {
-          title: 'You are at 30% of your ₦25m turnover band',
-          message: 'If you cross ₦25m in 12 months, VAT registration becomes mandatory.',
-        },
-        createdAt: now,
+    },
+    update: {},
+    create: {
+      ruleSetId: defaultRuleSet.id,
+      key: 'cit_eligibility_small_business_placeholder',
+      type: 'eligibility',
+      priority: 10,
+      conditionsJson: {
+        and: [
+          { field: 'legalForm', op: 'in', value: ['sole_proprietor', 'partnership'] },
+          { field: 'estimatedTurnoverBand', op: 'eq', value: '<25m' },
+        ],
       },
-    ],
-    skipDuplicates: true,
+      outcomeJson: {
+        citStatus: 'zero',
+        complianceNote: 'Small business eligible for zero CIT rate (PLACEHOLDER - verify with FIRS guidelines)',
+      },
+      explanation: 'Small businesses with turnover below ₦25M may be eligible for zero CIT rate. This is a placeholder rule and must be verified against current FIRS regulations.',
+    },
+  });
+
+  // Create placeholder VAT exemption rule
+  await prisma.taxRuleV2.upsert({
+    where: {
+      ruleSetId_key: {
+        ruleSetId: defaultRuleSet.id,
+        key: 'vat_exemption_small_business_placeholder',
+      },
+    },
+    update: {},
+    create: {
+      ruleSetId: defaultRuleSet.id,
+      key: 'vat_exemption_small_business_placeholder',
+      type: 'obligation',
+      priority: 10,
+      conditionsJson: {
+        and: [
+          { field: 'estimatedTurnoverBand', op: 'eq', value: '<25m' },
+          { field: 'vatRegistered', op: 'eq', value: false },
+        ],
+      },
+      outcomeJson: {
+        vatStatus: 'exempt',
+        complianceNote: 'Small business below VAT threshold (PLACEHOLDER - verify threshold with FIRS)',
+      },
+      explanation: 'Businesses below ₦25M turnover threshold may be exempt from VAT registration. This is a placeholder and must be verified against current FIRS thresholds.',
+    },
+  });
+
+  // Create annual return deadline template (placeholder)
+  await prisma.deadlineTemplate.upsert({
+    where: {
+      ruleSetId_key: {
+        ruleSetId: defaultRuleSet.id,
+        key: 'annual_return',
+      },
+    },
+    update: {},
+    create: {
+      ruleSetId: defaultRuleSet.id,
+      key: 'annual_return',
+      frequency: 'annual',
+      dueMonth: 3, // March
+      dueDay: 31, // 31st
+      title: 'Annual Tax Return',
+      description: 'Annual tax return filing deadline. PLACEHOLDER: Due date set to March 31. Verify actual deadline with FIRS for current tax year.',
+    },
   });
 
   console.log('Seed data created successfully');
@@ -388,6 +404,7 @@ Value Added Tax (VAT) in Nigeria is charged at **7.5%** on goods and services.
   console.log(`Created ${expenseCategories.length} expense categories`);
   console.log(`Created tax rules for ${currentYear}`);
   console.log(`Created knowledge articles`);
+  console.log(`Created default tax rule set 2026.1 with placeholder rules`);
 }
 
 main()

@@ -1,14 +1,82 @@
 "use client";
 
-import { useMemo } from "react";
-import { useMockApi } from "@/lib/mock-api";
+import { Suspense, useMemo, useState, useEffect } from "react";
+import { useSearchParams } from "next/navigation";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { ImportWizard } from "@/components/import-wizard";
+import { MonoConnectButton } from "@/components/bank/MonoConnectButton";
+import { BankConnectionsPanel } from "@/components/bank/BankConnectionsPanel";
+import { FeatureGate } from "@/components/feature-gate";
+import { useFeatures } from "@/hooks/use-features";
+import { getTransactions, Transaction } from "@/lib/api/transactions";
+import { useToast } from "@/components/ui/toast";
+import { Upload, Lock } from "lucide-react";
+import { getBusinesses } from "@/lib/api/businesses";
 
 export default function TransactionsPage() {
-  const { transactions } = useMockApi();
+  return (
+    <Suspense fallback={<div className="p-6 text-sm text-slate-500">Loading…</div>}>
+      <TransactionsPageInner />
+    </Suspense>
+  );
+}
+
+function TransactionsPageInner() {
+  const searchParams = useSearchParams();
+  const focus = searchParams.get("focus");
+  const { addToast } = useToast();
+  
+  const [business, setBusiness] = useState<{ id: string } | null>(null);
+  const [transactions, setTransactions] = useState<Transaction[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [showImportWizard, setShowImportWizard] = useState(false);
+  const [refreshKey, setRefreshKey] = useState(0);
+  const { hasFeature } = useFeatures(business?.id || null);
+
+  useEffect(() => {
+    loadBusiness();
+  }, []);
+
+  useEffect(() => {
+    if (business?.id) {
+      loadTransactions();
+    }
+  }, [business?.id, refreshKey]);
+
+  const loadBusiness = async () => {
+    try {
+      const businesses = await getBusinesses();
+      if (businesses && businesses.length > 0) {
+        setBusiness({ id: businesses[0].id });
+      }
+    } catch (error: any) {
+      console.error("Failed to load business:", error);
+    }
+  };
+
+  const loadTransactions = async () => {
+    if (!business?.id) return;
+    
+    try {
+      setLoading(true);
+      const result = await getTransactions(business.id, {
+        limit: 1000,
+      });
+      setTransactions(result.items || []);
+    } catch (error: any) {
+      addToast({
+        title: "Failed to load transactions",
+        description: error?.message || "Please try again later.",
+        variant: "error",
+      });
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const grouped = useMemo(() => {
-    const byMonth: Record<string, typeof transactions> = {};
+    const byMonth: Record<string, Transaction[]> = {};
     transactions.forEach((tx) => {
       const d = new Date(tx.date);
       const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
@@ -18,14 +86,198 @@ export default function TransactionsPage() {
     return Object.entries(byMonth).sort((a, b) => (a[0] < b[0] ? 1 : -1));
   }, [transactions]);
 
+  const currentYear = new Date().getFullYear();
+  const currentMonth = new Date().getMonth();
+  const monthsWithTransactions = useMemo(() => {
+    const set = new Set<number>();
+    transactions.forEach((tx) => {
+      const d = new Date(tx.date);
+      if (d.getFullYear() === currentYear) {
+        set.add(d.getMonth());
+      }
+    });
+    return set;
+  }, [transactions, currentYear]);
+
+  const missingMonths = useMemo(() => {
+    const monthNames = [
+      "January", "February", "March", "April", "May", "June",
+      "July", "August", "September", "October", "November", "December"
+    ];
+    const missing: string[] = [];
+    for (let m = 0; m <= currentMonth; m++) {
+      if (!monthsWithTransactions.has(m)) {
+        missing.push(monthNames[m]);
+      }
+    }
+    return missing;
+  }, [monthsWithTransactions, currentMonth]);
+
+  if (!business) {
+    return (
+      <div className="space-y-4">
+        <Card className="bg-white">
+          <CardContent className="py-6">
+            <p className="text-sm text-slate-500">Loading...</p>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-4">
-      <div>
-        <h1 className="text-lg font-semibold text-slate-900">Transactions</h1>
-        <p className="text-sm text-slate-500">Recent income and expenses by month.</p>
+      <div className="flex items-start justify-between">
+        <div>
+          <h1 className="text-lg font-semibold text-slate-900">Transactions</h1>
+          <p className="text-sm text-slate-500">Recent income and expenses by month.</p>
+        </div>
+        <div className="flex items-center gap-2">
+        <Button
+          onClick={() => setShowImportWizard(true)}
+          className="rounded-full bg-emerald-600 text-sm font-semibold hover:bg-emerald-700"
+        >
+          <Upload className="mr-1.5 h-4 w-4" />
+            Upload statement
+          </Button>
+          <FeatureGate
+            feature="bank_connect"
+            businessId={business.id}
+            fallback={
+              <Button
+                onClick={() => {
+                  window.location.href = "/app/settings?tab=plan";
+                }}
+                className="rounded-full bg-slate-100 text-sm font-semibold text-slate-700 hover:bg-slate-200"
+              >
+                <Lock className="mr-1.5 h-4 w-4" />
+                Upgrade to connect bank
+        </Button>
+            }
+            showUpgrade={false}
+          >
+            <MonoConnectButton
+              businessId={business.id}
+              onSuccess={() => {
+                setRefreshKey((k) => k + 1);
+              }}
+            />
+          </FeatureGate>
+        </div>
       </div>
 
-      {grouped.length === 0 ? (
+      {/* Bank Import Card */}
+      <Card className="bg-white border-slate-200">
+        <CardHeader className="pb-3">
+          <CardTitle className="text-sm font-semibold text-slate-800">
+            Bank Import
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="flex items-start gap-4">
+            <div className="flex-1">
+              <p className="text-sm font-medium text-slate-900 mb-1">
+                Upload bank statement
+              </p>
+              <p className="text-xs text-slate-500">
+                Upload a PDF or CSV statement to import transactions. Available for all plans.
+              </p>
+            </div>
+            <Button
+              size="sm"
+              onClick={() => setShowImportWizard(true)}
+              className="rounded-full bg-emerald-600 text-xs font-semibold hover:bg-emerald-700"
+            >
+              <Upload className="mr-1.5 h-3 w-3" />
+              Upload
+            </Button>
+          </div>
+          
+          <div className="border-t border-slate-100 pt-4">
+            <div className="flex items-start gap-4">
+              <div className="flex-1">
+                <p className="text-sm font-medium text-slate-900 mb-1">
+                  Connect your bank
+                </p>
+                <p className="text-xs text-slate-500">
+                  Automatically sync transactions from your bank account. Available for Business and Accountant plans.
+                </p>
+              </div>
+              <FeatureGate
+                feature="bank_connect"
+                businessId={business.id}
+                fallback={
+                  <Button
+                    size="sm"
+                    onClick={() => {
+                      window.location.href = "/app/settings?tab=plan";
+                    }}
+                    className="rounded-full bg-slate-100 text-xs font-semibold text-slate-700 hover:bg-slate-200"
+                  >
+                    <Lock className="mr-1.5 h-3 w-3" />
+                    Upgrade
+                  </Button>
+                }
+                showUpgrade={false}
+              >
+                <MonoConnectButton
+                  businessId={business.id}
+                  onSuccess={() => {
+                    setRefreshKey((k) => k + 1);
+                  }}
+                />
+              </FeatureGate>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Bank Connections Panel */}
+      {hasFeature("bank_connect") && (
+        <BankConnectionsPanel
+          businessId={business.id}
+        />
+      )}
+
+      {showImportWizard && (
+        <ImportWizard
+          businessId={business.id}
+          onClose={() => setShowImportWizard(false)}
+          onSuccess={() => {
+            setShowImportWizard(false);
+            setRefreshKey((k) => k + 1);
+          }}
+        />
+      )}
+
+      {focus === "missing-months" && missingMonths.length > 0 && (
+        <Card className="bg-amber-50 border-amber-200">
+          <CardContent className="py-4">
+            <div className="flex items-start justify-between">
+              <div>
+                <p className="text-sm font-semibold text-amber-900 mb-1">
+                  Missing months detected
+                </p>
+                <p className="text-xs text-amber-700">
+                  No transactions recorded for {missingMonths.slice(0, 3).join(", ")}
+                  {missingMonths.length > 3 && ` and ${missingMonths.length - 3} more`}.
+                </p>
+              </div>
+              <Button size="sm" className="bg-amber-600 hover:bg-amber-700">
+                Add records
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {loading ? (
+        <Card className="bg-white">
+          <CardContent className="py-6">
+            <p className="text-sm text-slate-500">Loading transactions...</p>
+          </CardContent>
+        </Card>
+      ) : grouped.length === 0 ? (
         <Card className="bg-white">
           <CardContent className="py-6">
             <p className="text-sm text-slate-500">
@@ -48,13 +300,13 @@ export default function TransactionsPage() {
                   className="flex items-center justify-between rounded-xl border border-slate-100 px-3 py-2"
                 >
                   <div>
-                    <p className="text-sm font-medium text-slate-900">{tx.description}</p>
+                    <p className="text-sm font-medium text-slate-900">{tx.description || "Transaction"}</p>
                     <p className="text-xs text-slate-500">
                       {tx.type === "income" ? "Income" : "Expense"} • {new Date(tx.date).toDateString()}
                     </p>
                   </div>
                   <div className="text-sm font-semibold text-slate-900">
-                    {tx.type === "income" ? "+" : "-"}₦{tx.amount.toLocaleString()}
+                    {tx.type === "income" ? "+" : "-"}₦{Number(tx.amount).toLocaleString()}
                   </div>
                 </div>
               ))}
@@ -65,4 +317,3 @@ export default function TransactionsPage() {
     </div>
   );
 }
-

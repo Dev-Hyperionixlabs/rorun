@@ -19,14 +19,14 @@ export class SmsService {
     const twilioPhone = this.configService.get<string>('TWILIO_PHONE_NUMBER');
 
     if (!this.twilioClient || !twilioPhone) {
-      // In development, just log
-      console.log(`[SMS Service] Would send OTP ${otp} to ${phone}`);
+      // Dev fallback: do not log raw OTP codes
+      console.log(`[SMS Service] Would send OTP to ${phone} (Twilio not configured)`);
       return;
     }
 
     try {
       await this.twilioClient.messages.create({
-        body: `Your Rorun verification code is: ${otp}. Valid for 10 minutes.`,
+        body: `Your Rorun verification code is: ${otp}. Valid for 5 minutes.`,
         from: twilioPhone,
         to: phone,
       });

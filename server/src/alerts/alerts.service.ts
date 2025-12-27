@@ -34,17 +34,14 @@ export class AlertsService {
     const alert = await this.prisma.alert.findUnique({
       where: { id: alertId },
       include: {
-        business: {
-          select: {
-            ownerUserId: true,
-          },
-        },
+        business: { select: { id: true } },
       },
     });
 
-    if (!alert || alert.business.ownerUserId !== userId) {
+    if (!alert) {
       throw new Error('Alert not found');
     }
+    await this.businessesService.findOne(alert.business.id, userId);
 
     return this.prisma.alert.update({
       where: { id: alertId },

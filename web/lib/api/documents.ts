@@ -7,13 +7,20 @@ const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001";
 export interface Document {
   id: string;
   businessId: string;
-  fileName: string;
+  // Newer shape
+  type?: string;
+  storageUrl?: string;
+  mimeType?: string;
+  size?: number;
+  // Older/UI-friendly shape
+  fileName?: string;
   fileType?: string;
-  fileUrl: string;
-  url?: string; // Alias for fileUrl for compatibility
-  type?: "receipt" | "bank_statement" | "other"; // Alias for fileType
+  fileUrl?: string;
+  url?: string;
   relatedTransactionId?: string;
-  uploadedAt: string;
+  createdAt: string;
+  uploadedAt?: string;
+  viewUrl?: string;
 }
 
 export async function getDocuments(businessId: string): Promise<Document[]> {
@@ -25,14 +32,18 @@ export async function getDocuments(businessId: string): Promise<Document[]> {
   });
   if (!res.ok) throw new Error("Failed to fetch documents");
   const data = await res.json();
-  const items = data.items || [];
-  // Normalize: ensure both url/fileUrl and type/fileType are available
+  const items = Array.isArray(data) ? data : data.items || [];
+
   return items.map((doc: any) => ({
     ...doc,
-    url: doc.url || doc.fileUrl,
-    fileUrl: doc.fileUrl || doc.url,
-    type: doc.type || doc.fileType,
+    // Keep these aliases stable for UI
+    url: doc.url || doc.fileUrl || doc.viewUrl || doc.storageUrl,
+    fileUrl: doc.fileUrl || doc.url || doc.viewUrl || doc.storageUrl,
+    fileName: doc.fileName || doc.name || doc.originalName,
+    type: doc.type || doc.fileType || doc.documentType,
     fileType: doc.fileType || doc.type,
+    uploadedAt: doc.uploadedAt || doc.createdAt,
+    createdAt: doc.createdAt || doc.uploadedAt,
   }));
 }
 
@@ -63,13 +74,15 @@ export async function uploadDocument(
   }
 
   const doc = await res.json();
-  // Normalize: ensure both url/fileUrl and type/fileType are available
   return {
     ...doc,
-    url: doc.url || doc.fileUrl,
-    fileUrl: doc.fileUrl || doc.url,
-    type: doc.type || doc.fileType,
+    url: doc.url || doc.fileUrl || doc.viewUrl || doc.storageUrl,
+    fileUrl: doc.fileUrl || doc.url || doc.viewUrl || doc.storageUrl,
+    fileName: doc.fileName || doc.name || doc.originalName,
+    type: doc.type || doc.fileType || doc.documentType,
     fileType: doc.fileType || doc.type,
+    uploadedAt: doc.uploadedAt || doc.createdAt,
+    createdAt: doc.createdAt || doc.uploadedAt,
   };
 }
 

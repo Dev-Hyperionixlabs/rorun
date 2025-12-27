@@ -1,23 +1,37 @@
 "use client";
 
+import { useState, useEffect } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { useMockApi } from "@/lib/mock-api";
-import { useFilingPack } from "@/hooks/use-filing-pack";
 import { Button } from "@/components/ui/button";
-import { useState } from "react";
+import { useMockApi } from "@/lib/mock-api";
+import { FilingPackCard } from "@/components/filing-pack-card";
+import { getBusinesses } from "@/lib/api/businesses";
+import { useFeatures } from "@/hooks/use-features";
+import { FileText, Lock } from "lucide-react";
+import Link from "next/link";
 
 export default function SummaryPage() {
   const { yearSummaries, businesses, loading } = useMockApi();
   const summary = yearSummaries[0];
   const business = businesses[0];
   const year = new Date().getFullYear();
-  const [localError, setLocalError] = useState<string | null>(null);
-  // Hooks must be called unconditionally - use fallback ID if business is null
-  const { pack, isLoading, error, generate } = useFilingPack(business?.id || "", year);
+  const [businessId, setBusinessId] = useState<string | null>(null);
+  const { hasFeature } = useFeatures(businessId);
 
-  if (loading || !business || !summary) {
-    return <div className="text-sm text-slate-500">Loading summary…</div>;
-  }
+  useEffect(() => {
+    loadBusiness();
+  }, []);
+
+  const loadBusiness = async () => {
+    try {
+      const businesses = await getBusinesses();
+      if (businesses && businesses.length > 0) {
+        setBusinessId(businesses[0].id);
+      }
+    } catch (error: any) {
+      console.error("Failed to load business:", error);
+    }
+  };
 
   return (
     <div className="space-y-4">
@@ -41,68 +55,54 @@ export default function SummaryPage() {
         </CardContent>
       </Card>
 
-      <Card className="bg-white">
-        <CardHeader className="pb-2">
-          <CardTitle className="text-sm font-semibold text-slate-800">
-            Filing pack
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-2">
-          {pack ? (
-            <div className="flex items-center justify-between rounded-xl border border-slate-100 px-3 py-2">
-              <div>
-                <p className="text-sm font-medium text-slate-900">Year {pack.taxYear}</p>
-                <p className="text-xs text-slate-500">
-                  Generated {new Date(pack.createdAt).toDateString()}
-                </p>
-              </div>
-              <div className="flex items-center gap-2">
-                {pack.pdfUrl && (
-                  <a
-                    href={pack.pdfUrl}
-                    className="text-xs font-semibold text-emerald-700 hover:text-emerald-800"
-                  >
-                    PDF
-                  </a>
-                )}
-                {pack.csvUrl && (
-                  <a
-                    href={pack.csvUrl}
-                    className="text-xs font-semibold text-emerald-700 hover:text-emerald-800"
-                  >
-                    CSV
-                  </a>
-                )}
-              </div>
-            </div>
+      {businessId && (
+        <>
+          {hasFeature("yearEndFilingPack") ? (
+            <Card>
+              <CardContent className="p-4">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <h3 className="text-sm font-semibold text-slate-900">
+                      Guided filing wizard
+                    </h3>
+                    <p className="text-xs text-slate-500 mt-1">
+                      Step-by-step interview to prepare your annual return
+                    </p>
+                  </div>
+                  <Link href={`/app/filing-wizard/${year}/annual`}>
+                    <Button className="bg-emerald-600 hover:bg-emerald-700">
+                      <FileText className="mr-2 h-4 w-4" />
+                      Start guided filing
+                    </Button>
+                  </Link>
+                </div>
+              </CardContent>
+            </Card>
           ) : (
-            <div className="space-y-3">
-              <p className="text-sm text-slate-500">
-                No packs generated yet. Create one for {year} to share with your accountant.
-              </p>
-              <div className="flex gap-2">
-                <Button
-                  className="rounded-full bg-emerald-600 text-sm font-semibold hover:bg-emerald-700"
-                  onClick={async () => {
-                    setLocalError(null);
-                    try {
-                      await generate();
-                    } catch (e: any) {
-                      setLocalError(e?.message || "Failed to generate pack");
-                    }
-                  }}
-                  disabled={isLoading}
-                >
-                  {isLoading ? "Preparing..." : "Generate FIRS filing pack"}
-                </Button>
-              </div>
-              {(error || localError) && (
-                <p className="text-xs font-semibold text-rose-600">{error || localError}</p>
-              )}
-            </div>
+            <Card>
+              <CardContent className="p-4">
+                <div className="flex items-center gap-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2">
+                  <Lock className="h-4 w-4 text-amber-700" />
+                  <div className="flex-1">
+                    <p className="text-sm font-medium text-amber-900">
+                      Guided filing wizard
+                    </p>
+                    <p className="text-xs text-amber-700 mt-0.5">
+                      Requires Basic plan or higher
+                    </p>
+                  </div>
+                  <Link href="/app/pricing">
+                    <Button variant="secondary" size="sm" className="text-xs">
+                      Upgrade
+                    </Button>
+                  </Link>
+                </div>
+              </CardContent>
+            </Card>
           )}
-        </CardContent>
-      </Card>
+          <FilingPackCard businessId={businessId} taxYear={year} />
+        </>
+      )}
     </div>
   );
 }

@@ -18,11 +18,17 @@ a {
 }
 
 .card {
-  @apply bg-white rounded-xl shadow-card border border-slate-100;
+  @apply bg-white rounded-xl shadow-card border border-slate-200;
 }
 
 .chip {
   @apply inline-flex items-center rounded-full px-2.5 py-1 text-xs font-medium;
+}
+
+/* Ensure text readability in dark hero sections */
+.bg-slate-900 .card,
+.bg-slate-950 .card {
+  @apply bg-white text-slate-900;
 }
 
 

@@ -7,7 +7,7 @@ export function Card({
 }: React.HTMLAttributes<HTMLDivElement>) {
   return (
     <div
-      className={clsx("card p-4 md:p-6 space-y-3 transition-shadow", className)}
+      className={clsx("card rounded-xl p-4 md:p-6 space-y-3 transition-shadow", className)}
       {...props}
     />
   );
@@ -18,7 +18,7 @@ export function CardHeader({
   ...props
 }: React.HTMLAttributes<HTMLDivElement>) {
   return (
-    <div className={clsx("flex items-center justify-between", className)} {...props} />
+    <div className={clsx("flex items-center justify-between pb-2", className)} {...props} />
   );
 }
 
@@ -26,7 +26,7 @@ export function CardTitle({
   className,
   ...props
 }: React.HTMLAttributes<HTMLHeadingElement>) {
-  return <h3 className={clsx("font-semibold text-slate-900", className)} {...props} />;
+  return <h3 className={clsx("text-base font-semibold text-slate-900", className)} {...props} />;
 }
 
 export function CardDescription({
@@ -34,7 +34,7 @@ export function CardDescription({
   ...props
 }: React.HTMLAttributes<HTMLParagraphElement>) {
   return (
-    <p className={clsx("text-sm text-slate-500", className)} {...props} />
+    <p className={clsx("text-sm text-slate-600", className)} {...props} />
   );
 }
 

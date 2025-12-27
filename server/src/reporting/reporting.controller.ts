@@ -2,6 +2,8 @@ import { Controller, Get, Post, Param, UseGuards, Request } from '@nestjs/common
 import { ApiTags, ApiOperation, ApiBearerAuth, ApiParam } from '@nestjs/swagger';
 import { ReportingService } from './reporting.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
+import { PlanFeatureGuard, RequireFeature } from '../plans/guards/plan-feature.guard';
+import { BusinessRoleGuard, RequireBusinessRoles } from '../auth/guards/business-role.guard';
 
 @ApiTags('reporting')
 @Controller('businesses/:id/reports')
@@ -11,6 +13,8 @@ export class ReportingController {
   constructor(private readonly reportingService: ReportingService) {}
 
   @Get(':year/summary')
+  @UseGuards(BusinessRoleGuard)
+  @RequireBusinessRoles('owner', 'accountant')
   @ApiParam({ name: 'id', description: 'Business ID' })
   @ApiParam({ name: 'year', description: 'Tax year' })
   @ApiOperation({ summary: 'Get yearly summary' })
@@ -19,6 +23,10 @@ export class ReportingController {
   }
 
   @Post(':year/pack')
+  @UseGuards(BusinessRoleGuard)
+  @RequireBusinessRoles('owner', 'accountant')
+  @UseGuards(PlanFeatureGuard)
+  @RequireFeature('yearEndFilingPack')
   @ApiParam({ name: 'id', description: 'Business ID' })
   @ApiParam({ name: 'year', description: 'Tax year' })
   @ApiOperation({ summary: 'Generate year-end pack (PDF + CSV)' })
@@ -27,6 +35,8 @@ export class ReportingController {
   }
 
   @Get(':year/pack/download')
+  @UseGuards(PlanFeatureGuard)
+  @RequireFeature('yearEndFilingPack')
   @ApiParam({ name: 'id', description: 'Business ID' })
   @ApiParam({ name: 'year', description: 'Tax year' })
   @ApiOperation({ summary: 'Get download links for year-end pack' })

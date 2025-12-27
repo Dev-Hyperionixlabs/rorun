@@ -7,6 +7,7 @@ type Toast = {
   id: string;
   title: string;
   description?: string;
+  variant?: "default" | "success" | "error";
 };
 
 interface ToastContextValue {
@@ -20,7 +21,7 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
 
   const addToast = useCallback((toast: Omit<Toast, "id">) => {
     const id = crypto.randomUUID();
-    setToasts((prev) => [...prev, { id, ...toast }]);
+    setToasts((prev) => [...prev, { id, variant: "default", ...toast }]);
     setTimeout(() => {
       setToasts((prev) => prev.filter((t) => t.id !== id));
     }, 3500);
@@ -34,12 +35,25 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
           <div
             key={toast.id}
             className={clsx(
-              "rounded-2xl border border-slate-200 bg-white px-4 py-3 shadow-lg"
+              "rounded-xl border bg-white px-4 py-3 shadow-card",
+              toast.variant === "error" && "border-red-200 bg-red-50",
+              toast.variant === "success" && "border-emerald-200 bg-emerald-50",
+              !toast.variant && "border-slate-200"
             )}
           >
-            <div className="text-sm font-semibold text-slate-900">{toast.title}</div>
+            <div className={clsx(
+              "text-sm font-semibold",
+              toast.variant === "error" && "text-red-900",
+              toast.variant === "success" && "text-emerald-900",
+              !toast.variant && "text-slate-900"
+            )}>{toast.title}</div>
             {toast.description && (
-              <div className="mt-1 text-xs text-slate-600">{toast.description}</div>
+              <div className={clsx(
+                "mt-1 text-xs",
+                toast.variant === "error" && "text-red-700",
+                toast.variant === "success" && "text-emerald-700",
+                !toast.variant && "text-slate-600"
+              )}>{toast.description}</div>
             )}
           </div>
         ))}

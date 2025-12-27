@@ -20,11 +20,14 @@ model User {
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
 
-  businesses    Business[]
-  subscriptions Subscription[]
-  devices       Device[]
-  auditLogs     AuditLog[] @relation("ActorUser")
-  filingPacks   FilingPack[]
+  businesses         Business[]
+  subscriptions      Subscription[]
+  devices            Device[]
+  auditLogs          AuditLog[] @relation("ActorUser")
+  filingPacks        FilingPack[]
+  transactionOverrides TransactionOverride[]
+  otpChallenges      OtpChallenge[]
+  businessMembers    BusinessMember[]
 
   @@map("users")
 }
@@ -54,6 +57,19 @@ model Business {
   importBatches         ImportBatch[]
   filingPacks           FilingPack[]
   notificationSetting   NotificationSetting?
+  actionStates          ActionState[]
+  bankConnections       BankConnection[]
+  auditEvents           AuditEvent[]
+  bankConsents          BankConsent[]
+  complianceTasks       ComplianceTask[]
+  filingRuns            FilingRun[]
+  notificationPreferences NotificationPreference[]
+  notificationEvents    NotificationEvent[]
+  obligationSnapshots   ObligationSnapshot[]
+  transactionOverrides  TransactionOverride[]
+  reviewIssues          ReviewIssue[]
+  members              BusinessMember[]
+  paymentEvents         PaymentEvent[]
 
   @@map("businesses")
 }
@@ -99,6 +115,7 @@ model TransactionCategory {
 
   transactions Transaction[]
   aiSuggestions Transaction[] @relation("AICategory")
+  transactionOverrides TransactionOverride[]
 
   @@map("transaction_categories")
 }
@@ -112,11 +129,17 @@ model Transaction {
   date            DateTime
   description     String?
   source          String   @default("manual") // manual, upload, import
+  classification  String   @default("unknown") // 'business'|'personal'|'unknown'
   categoryId      String?
+  categoryConfidence Decimal? @db.Decimal(5, 4)
   aiCategoryId    String?
   aiConfidence    Decimal? @db.Decimal(5, 4)
   isBusinessFlag  Boolean  @default(true)
   invoiceId       String?
+  importFingerprint String? @unique
+  importBatchId   String?
+  provider        String?  // "mono", null
+  providerTxnId   String?
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
 
@@ -125,11 +148,59 @@ model Transaction {
   aiCategory      TransactionCategory? @relation("AICategory", fields: [aiCategoryId], references: [id])
   documents       Document[]
   invoice         Invoice? @relation(fields: [invoiceId], references: [id])
+  importBatch     ImportBatch? @relation(fields: [importBatchId], references: [id], onDelete: SetNull)
+  override        TransactionOverride?
 
+  @@unique([businessId, provider, providerTxnId], name: "transactions_business_provider_txnId_key")
   @@index([businessId, date])
+  @@index([businessId, classification])
   @@index([businessId, type])
   @@index([businessId, categoryId])
+  @@index([providerTxnId])
   @@map("transactions")
+}
+
+model TransactionOverride {
+  id             String   @id @default(uuid())
+  businessId     String
+  transactionId  String   @unique
+  setByUserId    String
+  classification String?  // optional override
+  categoryId     String?  // optional override
+  note           String?  @db.Text
+  createdAt      DateTime @default(now())
+
+  business       Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  transaction    Transaction @relation(fields: [transactionId], references: [id], onDelete: Cascade)
+  setByUser      User @relation(fields: [setByUserId], references: [id], onDelete: Restrict)
+  category       TransactionCategory? @relation(fields: [categoryId], references: [id])
+
+  @@index([businessId, createdAt])
+  @@map("transaction_overrides")
+}
+
+model ReviewIssue {
+  id          String   @id @default(uuid())
+  businessId  String
+  taxYear     Int
+  type        String   // 'uncategorized'|'unknown_classification'|'missing_month'|'missing_evidence'|'possible_duplicate'
+  severity    String   // 'low'|'medium'|'high'
+  status      String   @default("open") // 'open'|'dismissed'|'resolved'
+  dedupeKey   String
+  title       String
+  description String   @db.Text
+  entityType  String?
+  entityId    String?
+  metaJson    Json?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  business    Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+
+  @@unique([businessId, taxYear, type, dedupeKey])
+  @@index([businessId, taxYear, status])
+  @@index([type, status])
+  @@map("review_issues")
 }
 
 model Document {
@@ -147,6 +218,10 @@ model Document {
   business              Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
   transaction           Transaction? @relation(fields: [relatedTransactionId], references: [id], onDelete: SetNull)
   importBatches         ImportBatch[]
+  taskEvidenceLinks     TaskEvidenceLink[]
+  filingPackPDFs        FilingPack[] @relation("FilingPackPDF")
+  filingPackCSVs        FilingPack[] @relation("FilingPackCSV")
+  filingPackZIPs        FilingPack[] @relation("FilingPackZIP")
 
   @@map("documents")
 }
@@ -249,10 +324,12 @@ model AuditLog {
 
 model Plan {
   id          String   @id @default(uuid())
+  planKey     String?  @unique // 'free'|'basic'|'business'|'accountant'
   name        String
   description String?
   monthlyPrice Decimal  @db.Decimal(10, 2)
   annualPrice Decimal? @db.Decimal(10, 2)
+  currency    String   @default("NGN")
   isActive    Boolean  @default(true)
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
@@ -264,21 +341,47 @@ model Plan {
 }
 
 model FilingPack {
-  id               String   @id @default(uuid())
-  businessId       String
-  taxYear          Int
-  createdAt        DateTime @default(now())
-  createdByUserId  String
-  status           String   @default("ready") // ready, failed
-  pdfUrl           String?
-  csvUrl           String?
-  metadataJson     Json?
+  id                String   @id @default(uuid())
+  businessId        String
+  taxYear           Int
+  status            String   @default("queued") // queued, generating, ready, failed
+  version           Int      @default(1)
+  requestedByUserId  String
+  requestedAt       DateTime @default(now())
+  completedAt       DateTime?
+  errorMessage      String?
+  summaryJson       Json?
+  pdfDocumentId     String?
+  csvDocumentId     String?
+  zipDocumentId     String?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
 
-  business         Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
-  createdBy        User     @relation(fields: [createdByUserId], references: [id], onDelete: Restrict)
+  business          Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  requestedBy       User     @relation(fields: [requestedByUserId], references: [id], onDelete: Restrict)
+  pdfDocument       Document? @relation("FilingPackPDF", fields: [pdfDocumentId], references: [id], onDelete: SetNull)
+  csvDocument       Document? @relation("FilingPackCSV", fields: [csvDocumentId], references: [id], onDelete: SetNull)
+  zipDocument       Document? @relation("FilingPackZIP", fields: [zipDocumentId], references: [id], onDelete: SetNull)
+  items             FilingPackItem[]
 
-  @@unique([businessId, taxYear])
+  @@unique([businessId, taxYear, version])
+  @@index([businessId, taxYear])
+  @@index([status])
   @@map("filing_packs")
+}
+
+model FilingPackItem {
+  id          String   @id @default(uuid())
+  filingPackId String
+  kind        String   // transaction, document, summary
+  refId       String   // transactionId or documentId
+  metaJson    Json?
+  createdAt   DateTime @default(now())
+
+  filingPack  FilingPack @relation(fields: [filingPackId], references: [id], onDelete: Cascade)
+
+  @@index([filingPackId])
+  @@map("filing_pack_items")
 }
 
 model PlanFeature {
@@ -295,21 +398,28 @@ model PlanFeature {
 }
 
 model Subscription {
-  id        String   @id @default(uuid())
-  userId    String
-  businessId String
-  planId    String
-  status    String   @default("active") // active, cancelled, expired
-  startedAt DateTime @default(now())
-  endsAt    DateTime?
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  id                    String   @id @default(uuid())
+  userId                String
+  businessId            String
+  planId                String
+  status                String   @default("active") // active, past_due, canceled, trialing
+  provider              String?  // 'paystack' or null for free/local
+  providerCustomerId    String?
+  providerSubscriptionId String?
+  currentPeriodEnd      DateTime?
+  cancelAtPeriodEnd     Boolean  @default(false)
+  startedAt             DateTime @default(now())
+  endsAt                DateTime?
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
 
   user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   business  Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
   plan      Plan     @relation(fields: [planId], references: [id])
 
+  @@unique([businessId]) // One active subscription per business
   @@index([userId, businessId])
+  @@index([providerSubscriptionId])
   @@map("subscriptions")
 }
 
@@ -353,15 +463,18 @@ model ImportBatch {
   id        String   @id @default(uuid())
   businessId String
   documentId String?
-  status    String   @default("pending") // pending, processing, completed, failed
+  source    String   @default("statement") // statement, bank_connect
+  status    String   @default("pending") // pending, parsed, pending_review, approved, rolled_back, failed
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
   business  Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
   document  Document? @relation(fields: [documentId], references: [id], onDelete: SetNull)
   lines     ImportBatchLine[]
+  transactions Transaction[]
 
   @@index([documentId])
+  @@index([businessId, status])
 
   @@map("import_batches")
 }
@@ -380,5 +493,341 @@ model ImportBatchLine {
   importBatch         ImportBatch @relation(fields: [importBatchId], references: [id], onDelete: Cascade)
 
   @@map("import_batch_lines")
+}
+
+model ActionState {
+  id          String   @id @default(uuid())
+  businessId  String
+  actionType  String
+  taxYear     Int
+  status      String   @default("open") // open, completed, dismissed
+  dismissedAt DateTime?
+  completedAt DateTime?
+  metaJson    Json?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  business    Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+
+  @@unique([businessId, actionType, taxYear])
+  @@index([businessId, taxYear, status])
+  @@map("action_states")
+}
+
+model BankConnection {
+  id                String   @id @default(uuid())
+  businessId        String
+  provider          String   // "mono", "okra", "stitch", etc.
+  status            String   @default("active") // active, error, disconnected
+  providerAccountId String
+  providerTokenCiphertext String?
+  providerTokenIv         String?
+  institutionName   String?
+  accountName       String?
+  accountNumberMasked String?
+  currency          String   @default("NGN")
+  lastSyncedAt      DateTime?
+  lastSyncCursor    String?
+  lastSyncRequestedAt DateTime?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  business          Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  importEvents      BankImportEvent[]
+  consents          BankConsent[]
+
+  @@unique([businessId, provider, providerAccountId])
+  @@index([businessId])
+  @@index([status])
+  @@map("bank_connections")
+}
+
+model BankImportEvent {
+  id              String   @id @default(uuid())
+  bankConnectionId String
+  type            String   // sync_started, sync_success, sync_failed
+  payloadJson     Json?
+  createdAt       DateTime @default(now())
+
+  bankConnection  BankConnection @relation(fields: [bankConnectionId], references: [id], onDelete: Cascade)
+
+  @@index([bankConnectionId, createdAt])
+  @@map("bank_import_events")
+}
+
+model AuditEvent {
+  id          String   @id @default(uuid())
+  businessId  String?
+  actorUserId String?
+  action      String   // bank.connect, bank.sync.start, bank.sync.success, bank.sync.fail, bank.disconnect, import.create, import.approve, import.rollback, export.create, plan.change
+  entityType  String   // BankConnection, ImportBatch, FilingPack, etc.
+  entityId    String
+  ip          String?
+  userAgent   String?
+  metaJson    Json?
+  createdAt   DateTime @default(now())
+
+  business    Business? @relation(fields: [businessId], references: [id], onDelete: Cascade)
+
+  @@index([businessId])
+  @@index([entityType, entityId])
+  @@index([createdAt])
+  @@map("audit_events")
+}
+
+model OtpChallenge {
+  id          String   @id @default(uuid())
+  userId      String?
+  phone       String
+  codeHash    String
+  expiresAt   DateTime
+  attempts    Int      @default(0)
+  maxAttempts Int      @default(5)
+  consumedAt  DateTime?
+  createdAt   DateTime @default(now())
+
+  user        User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([phone, expiresAt])
+  @@map("otp_challenges")
+}
+
+model BusinessMember {
+  id         String   @id @default(uuid())
+  businessId String
+  userId     String
+  role       String   @default("member") // 'owner'|'member'|'accountant'
+  createdAt  DateTime @default(now())
+
+  business   Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([businessId, userId])
+  @@index([userId])
+  @@index([businessId, role])
+  @@map("business_members")
+}
+
+model BankConsent {
+  id                String   @id @default(uuid())
+  businessId        String
+  bankConnectionId  String
+  provider          String   // "mono"
+  scope             Json     // { statements: true, balances: false, periodDays: 90 }
+  consentTextVersion String
+  acceptedAt        DateTime
+  acceptedByUserId  String
+  revokedAt         DateTime?
+  revokedByUserId   String?
+  createdAt         DateTime @default(now())
+
+  business          Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  bankConnection    BankConnection @relation(fields: [bankConnectionId], references: [id], onDelete: Cascade)
+
+  @@index([bankConnectionId])
+  @@index([businessId])
+  @@map("bank_consents")
+}
+
+model ComplianceTask {
+  id                String   @id @default(uuid())
+  businessId        String
+  taxYear           Int
+  taskKey           String
+  title             String
+  description       String
+  category          String   // registration, filing, records, payment, other
+  frequency         String   // one_time, monthly, quarterly, annual
+  dueDate           DateTime
+  status            String   @default("open") // open, in_progress, done, overdue, dismissed
+  priority          Int      @default(50)
+  evidenceRequired  Boolean  @default(false)
+  evidenceSpecJson  Json?
+  sourceRuleSet     String
+  createdBy         String   // 'system' or userId
+  completedAt       DateTime?
+  dismissedAt       DateTime?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  business          Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  evidenceLinks     TaskEvidenceLink[]
+
+  @@unique([businessId, taxYear, taskKey])
+  @@index([businessId, dueDate])
+  @@index([businessId, status])
+  @@map("compliance_tasks")
+}
+
+model TaskEvidenceLink {
+  id          String   @id @default(uuid())
+  taskId      String
+  documentId  String
+  note        String?
+  createdAt   DateTime @default(now())
+
+  task        ComplianceTask @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  document    Document @relation(fields: [documentId], references: [id], onDelete: Cascade)
+
+  @@index([taskId])
+  @@index([documentId])
+  @@map("task_evidence_links")
+}
+
+model FilingRun {
+  id            String   @id @default(uuid())
+  businessId    String
+  taxYear       Int
+  kind          String   // 'annual_return_prep'
+  status        String   @default("in_progress") // 'in_progress'|'ready'|'submitted'|'abandoned'
+  currentStep   String   @default("confirm_business") // 'confirm_business'|'income'|'expenses'|'evidence'|'review'
+  answersJson   Json     @default("{}")
+  computedJson  Json?
+  lastViewedAt DateTime @default(now())
+  createdByUserId String
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  business      Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+
+  @@unique([businessId, taxYear, kind])
+  @@index([businessId, taxYear])
+  @@map("filing_runs")
+}
+
+model NotificationPreference {
+  id          String   @id @default(uuid())
+  businessId  String
+  userId      String
+  channel     String   // 'in_app'|'email'|'sms'
+  enabled     Boolean  @default(true)
+  rulesJson   Json     @default("{}")
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  business    Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+
+  @@unique([businessId, userId, channel])
+  @@index([businessId, userId])
+  @@map("notification_preferences")
+}
+
+model NotificationEvent {
+  id            String   @id @default(uuid())
+  businessId    String
+  userId        String?
+  type          String   // 'deadline_reminder'|'task_overdue'|'accountant_request'|'filing_pack_ready'
+  channel       String   // 'in_app'|'email'|'sms'
+  status        String   @default("queued") // 'queued'|'sent'|'failed'|'skipped'
+  provider      String?  // 'resend'|'termii'|'twilio'|...
+  to            String?  // email/phone
+  subject       String?
+  bodyPreview   String?
+  metaJson      Json?
+  errorMessage  String?
+  sentAt        DateTime?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  business      Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+
+  @@index([businessId, createdAt])
+  @@index([status, createdAt])
+  @@map("notification_events")
+}
+
+model TaxRuleSet {
+  id            String   @id @default(uuid())
+  version       String   @unique
+  name          String
+  status        String   @default("draft") // 'draft'|'active'|'archived'
+  effectiveFrom DateTime
+  effectiveTo   DateTime?
+  description   String?  @db.Text
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  rules         TaxRuleV2[]
+  deadlineTemplates DeadlineTemplate[]
+
+  @@index([status])
+  @@map("tax_rule_sets")
+}
+
+model TaxRuleV2 {
+  id              String   @id @default(uuid())
+  ruleSetId       String
+  key             String
+  type            String   // 'eligibility'|'obligation'|'deadline'|'threshold'
+  priority        Int
+  conditionsJson  Json
+  outcomeJson     Json
+  explanation     String   @db.Text
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  ruleSet         TaxRuleSet @relation(fields: [ruleSetId], references: [id], onDelete: Cascade)
+
+  @@unique([ruleSetId, key])
+  @@index([ruleSetId, priority])
+  @@map("tax_rules_v2")
+}
+
+model ObligationSnapshot {
+  id              String   @id @default(uuid())
+  businessId      String
+  ruleSetVersion  String
+  evaluatedAt     DateTime @default(now())
+  inputsJson      Json
+  outputsJson     Json
+  explanationJson Json
+  createdAt       DateTime @default(now())
+
+  business        Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+
+  @@index([businessId, evaluatedAt])
+  @@map("obligation_snapshots")
+}
+
+model DeadlineTemplate {
+  id              String   @id @default(uuid())
+  ruleSetId       String
+  key             String
+  frequency       String   // 'monthly'|'quarterly'|'annual'|'one_time'
+  dueDayOfMonth   Int?
+  dueMonth        Int?
+  dueDay          Int?
+  offsetDays      Int?
+  appliesWhenJson Json?
+  title           String
+  description     String   @db.Text
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  ruleSet         TaxRuleSet @relation(fields: [ruleSetId], references: [id], onDelete: Cascade)
+
+  @@unique([ruleSetId, key])
+  @@map("deadline_templates")
+}
+
+model PaymentEvent {
+  id            String   @id @default(uuid())
+  provider      String   // 'paystack'
+  eventType     String   // 'charge.success', 'subscription.create', 'subscription.disable', etc.
+  eventId       String?  @unique // Provider's event ID for idempotency
+  payloadJson   Json
+  receivedAt    DateTime @default(now())
+  processedAt   DateTime?
+  status        String   @default("pending") // pending, processed, failed
+  errorMessage  String?
+  businessId    String?
+  subscriptionId String?
+
+  business      Business? @relation(fields: [businessId], references: [id], onDelete: SetNull)
+
+  @@index([provider, eventType])
+  @@index([status, receivedAt])
+  @@index([businessId])
+  @@map("payment_events")
 }
 
