@@ -8,11 +8,13 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { login } from "@/lib/api/auth";
 import { ApiError } from "@/lib/api/client";
+import { Eye, EyeOff } from "lucide-react";
 
 export function LoginFormCard({ reason }: { reason?: string }) {
   const router = useRouter();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -31,19 +33,22 @@ export function LoginFormCard({ reason }: { reason?: string }) {
       let message: string;
       switch (code) {
         case "INVALID_CREDENTIALS":
+          message = "No account found with that email. Check the email or sign up.";
+          break;
         case "NO_PASSWORD_SET":
-          message = err.message; // Use server's message - it's already user-friendly
+          message = "This account has no password. Click 'Forgot password' to set one.";
+          break;
+        case "WRONG_PASSWORD":
+          message = "Incorrect password. Try again or reset your password.";
           break;
         case "DB_SCHEMA_MISSING_COLUMN":
-          message = "Login is temporarily unavailable. Please try again in a few minutes.";
-          break;
         case "LOGIN_UNAVAILABLE":
-          message = "Login is temporarily unavailable. Please try again shortly.";
+          message = "Login is temporarily unavailable. Please try again in a few minutes.";
           break;
         default:
           // For 401 without specific code, or generic errors
           if (status === 401) {
-            message = "Incorrect email or password.";
+            message = err?.message || "Incorrect email or password.";
           } else if (status === 500 || status === 0) {
             message = "Something went wrong on our end. Please try again in a moment.";
           } else {
@@ -103,13 +108,24 @@ export function LoginFormCard({ reason }: { reason?: string }) {
           <label className="text-sm font-medium text-slate-800">
             Password
           </label>
-          <Input
-            type="password"
-            placeholder="••••••••"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            required
-          />
+          <div className="relative">
+            <Input
+              type={showPassword ? "text" : "password"}
+              placeholder="••••••••"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              required
+              className="pr-10"
+            />
+            <button
+              type="button"
+              onClick={() => setShowPassword(!showPassword)}
+              className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+              tabIndex={-1}
+            >
+              {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+            </button>
+          </div>
         </div>
 
         <Button

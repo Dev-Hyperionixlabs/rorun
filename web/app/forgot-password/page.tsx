@@ -9,11 +9,13 @@ import { Button } from "@/components/ui/button";
 import { resetPasswordDirect } from "@/lib/api/auth";
 import { useToast } from "@/components/ui/toast";
 import { ApiError } from "@/lib/api/client";
+import { Eye, EyeOff } from "lucide-react";
 
 export default function ForgotPasswordPage() {
   const { addToast } = useToast();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -99,13 +101,24 @@ export default function ForgotPasswordPage() {
               <label className="text-sm font-medium text-slate-800">
                 New password
               </label>
-              <Input
-                type="password"
-                placeholder="At least 8 characters"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                required
-              />
+              <div className="relative">
+                <Input
+                  type={showPassword ? "text" : "password"}
+                  placeholder="At least 8 characters"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  required
+                  className="pr-10"
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowPassword(!showPassword)}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+                  tabIndex={-1}
+                >
+                  {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+                </button>
+              </div>
             </div>
 
             <Button

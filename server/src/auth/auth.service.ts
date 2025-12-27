@@ -1,4 +1,4 @@
-import { BadRequestException, Injectable, UnauthorizedException } from '@nestjs/common';
+import { BadRequestException, Injectable, UnauthorizedException, HttpException, HttpStatus } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { UsersService } from '../users/users.service';
 import { SmsService } from './sms.service';
@@ -225,25 +225,25 @@ export class AuthService {
 
     // Check if user exists and has a password
     if (!user) {
-      throw new UnauthorizedException({
-        code: 'INVALID_CREDENTIALS',
-        message: 'No account found with that email. Check the email or sign up for a new account.',
-      });
+      throw new HttpException(
+        { code: 'INVALID_CREDENTIALS', message: 'No account found with that email. Check the email or sign up for a new account.' },
+        HttpStatus.UNAUTHORIZED,
+      );
     }
 
     if (!user.passwordHash) {
-      throw new UnauthorizedException({
-        code: 'NO_PASSWORD_SET',
-        message: 'This account has no password set. Use "Forgot password" to set one.',
-      });
+      throw new HttpException(
+        { code: 'NO_PASSWORD_SET', message: 'This account has no password set. Use "Forgot password" to set one.' },
+        HttpStatus.UNAUTHORIZED,
+      );
     }
 
     const ok = await bcrypt.compare(password, user.passwordHash);
     if (!ok) {
-      throw new UnauthorizedException({
-        code: 'INVALID_CREDENTIALS',
-        message: 'Incorrect password. Please try again or reset your password.',
-      });
+      throw new HttpException(
+        { code: 'WRONG_PASSWORD', message: 'Incorrect password. Please try again or reset your password.' },
+        HttpStatus.UNAUTHORIZED,
+      );
     }
 
     const access_token = await this.signJwt(user);
