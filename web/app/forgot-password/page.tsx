@@ -53,13 +53,32 @@ export default function ForgotPasswordPage() {
                 });
                 window.location.href = "/login";
               } catch (err: any) {
-                if (err instanceof ApiError && err.code === "DB_SCHEMA_OUT_OF_DATE") {
-                  setError("Password reset isn’t ready yet (server needs a small DB update). Please contact support/admin.");
-                } else if (err instanceof ApiError && err.code === "WEAK_PASSWORD") {
-                  setError("Password is too short. Use at least 8 characters.");
-                } else {
-                  setError(err?.message || "Could not reset password");
+                const code = err instanceof ApiError ? err.code : undefined;
+                const status = err instanceof ApiError ? err.status : 0;
+
+                let message: string;
+                switch (code) {
+                  case "DB_SCHEMA_OUT_OF_DATE":
+                  case "DB_SCHEMA_MISSING_COLUMN":
+                    message = "Password reset isn't ready yet. The server needs a quick update. Please try again in a few minutes.";
+                    break;
+                  case "WEAK_PASSWORD":
+                    message = "Password is too short. Use at least 8 characters.";
+                    break;
+                  case "RESET_DISABLED":
+                    message = "Password reset is not available right now.";
+                    break;
+                  case "RESET_FAILED":
+                    message = "Could not reset password. Please try again shortly.";
+                    break;
+                  default:
+                    if (status === 500 || status === 0) {
+                      message = "Something went wrong on our end. Please try again in a moment.";
+                    } else {
+                      message = err?.message || "Could not reset password.";
+                    }
                 }
+                setError(message);
               } finally {
                 setSubmitting(false);
               }

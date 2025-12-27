@@ -97,10 +97,6 @@ export class AuthService {
     ip?: string,
     userAgent?: string,
   ): Promise<{ access_token: string; accessToken: string; user: any }> {
-    // Some environments may have stale Prisma client typings. Use a narrow escape hatch
-    // for the new `passwordHash` field to avoid blocking builds/editor typechecks.
-    const prismaAny = this.prisma as any;
-
     const normalizedEmail = email.trim().toLowerCase();
     if (password.length < 8) {
       throw new BadRequestException({
@@ -109,36 +105,68 @@ export class AuthService {
       });
     }
 
-    const existing = await prismaAny.user.findUnique({
-      where: { email: normalizedEmail },
-    });
+    // Wrap all DB access in try/catch so we never return raw 500s
+    let user: any;
+    try {
+      const prismaAny = this.prisma as any;
+      const existing = await prismaAny.user.findUnique({
+        where: { email: normalizedEmail },
+      });
 
-    const passwordHash = await bcrypt.hash(password, 10);
+      // Check if user already has a password set
+      if (existing && existing.passwordHash) {
+        throw new BadRequestException({
+          code: 'EMAIL_IN_USE',
+          message: 'That email already has an account. Try logging in or resetting your password.',
+        });
+      }
 
-    // If a user exists but has no passwordHash yet (legacy/pre-auth record),
-    // allow them to "claim" the account by setting a password.
-    const user = existing
-      ? existing.passwordHash
-        ? (() => {
-            throw new BadRequestException({
-              code: 'EMAIL_IN_USE',
-              message: 'That email is already in use. Please log in instead.',
-            });
-          })()
-        : await prismaAny.user.update({
-            where: { id: existing.id },
-            data: {
-              name: existing.name || name || null,
-              passwordHash,
-            },
-          })
-      : await prismaAny.user.create({
+      const passwordHash = await bcrypt.hash(password, 10);
+
+      if (existing) {
+        // User exists but has no password - let them claim the account
+        user = await prismaAny.user.update({
+          where: { id: existing.id },
+          data: {
+            name: existing.name || name || null,
+            passwordHash,
+          },
+        });
+      } else {
+        // Brand new user
+        user = await prismaAny.user.create({
           data: {
             email: normalizedEmail,
             name: name || null,
             passwordHash,
           },
         });
+      }
+    } catch (err: any) {
+      // Re-throw our own BadRequestExceptions
+      if (err instanceof BadRequestException) throw err;
+
+      // Handle Prisma/DB errors gracefully
+      const msg = String(err?.message || err).toLowerCase();
+      if (msg.includes('passwordhash') || msg.includes('column') || err?.code === 'P2022') {
+        throw new BadRequestException({
+          code: 'DB_SCHEMA_MISSING_COLUMN',
+          message: 'Sign up is not available yet. The database needs a schema update (missing passwordHash column).',
+        });
+      }
+      if (err?.code === 'P2002') {
+        throw new BadRequestException({
+          code: 'EMAIL_IN_USE',
+          message: 'That email already has an account. Try logging in or resetting your password.',
+        });
+      }
+      // Log for debugging but return friendly message
+      console.error('[AuthService.signupWithPassword] Unexpected error:', err);
+      throw new BadRequestException({
+        code: 'SIGNUP_FAILED',
+        message: 'Could not create your account right now. Please try again in a moment.',
+      });
+    }
 
     const access_token = await this.signJwt(user);
 
@@ -151,7 +179,7 @@ export class AuthService {
       metaJson: { email: normalizedEmail },
       ip: ip ? String(ip) : null,
       userAgent: userAgent ? String(userAgent) : null,
-    });
+    }).catch(() => {}); // Don't fail signup if audit fails
 
     return {
       access_token,
@@ -172,18 +200,50 @@ export class AuthService {
     ip?: string,
     userAgent?: string,
   ): Promise<{ access_token: string; accessToken: string; user: any }> {
-    const prismaAny = this.prisma as any;
     const normalizedEmail = email.trim().toLowerCase();
-    const user = await prismaAny.user.findUnique({
-      where: { email: normalizedEmail },
-    });
-    if (!user || !user.passwordHash) {
-      throw new UnauthorizedException('Invalid email or password');
+
+    let user: any;
+    try {
+      const prismaAny = this.prisma as any;
+      user = await prismaAny.user.findUnique({
+        where: { email: normalizedEmail },
+      });
+    } catch (err: any) {
+      const msg = String(err?.message || err).toLowerCase();
+      if (msg.includes('passwordhash') || msg.includes('column') || err?.code === 'P2022') {
+        throw new BadRequestException({
+          code: 'DB_SCHEMA_MISSING_COLUMN',
+          message: 'Login is not available yet. The database needs a schema update (missing passwordHash column).',
+        });
+      }
+      console.error('[AuthService.loginWithPassword] DB error:', err);
+      throw new BadRequestException({
+        code: 'LOGIN_UNAVAILABLE',
+        message: 'Login is temporarily unavailable. Please try again in a moment.',
+      });
+    }
+
+    // Check if user exists and has a password
+    if (!user) {
+      throw new UnauthorizedException({
+        code: 'INVALID_CREDENTIALS',
+        message: 'No account found with that email. Check the email or sign up for a new account.',
+      });
+    }
+
+    if (!user.passwordHash) {
+      throw new UnauthorizedException({
+        code: 'NO_PASSWORD_SET',
+        message: 'This account has no password set. Use "Forgot password" to set one.',
+      });
     }
 
     const ok = await bcrypt.compare(password, user.passwordHash);
     if (!ok) {
-      throw new UnauthorizedException('Invalid email or password');
+      throw new UnauthorizedException({
+        code: 'INVALID_CREDENTIALS',
+        message: 'Incorrect password. Please try again or reset your password.',
+      });
     }
 
     const access_token = await this.signJwt(user);
@@ -197,7 +257,7 @@ export class AuthService {
       metaJson: { email: normalizedEmail },
       ip: ip ? String(ip) : null,
       userAgent: userAgent ? String(userAgent) : null,
-    });
+    }).catch(() => {}); // Don't fail login if audit fails
 
     return {
       access_token,

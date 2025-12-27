@@ -74,13 +74,31 @@ export default function SignupPage() {
                 await signup({ email, password, name: name || undefined });
                 router.push("/onboarding");
               } catch (err: any) {
-                if (err instanceof ApiError && err.code === "WEAK_PASSWORD") {
-                  setError("Password is too short. Use at least 8 characters.");
-                } else if (err instanceof ApiError && err.code === "EMAIL_IN_USE") {
-                  setError("That email already has an account. Try logging in instead.");
-                } else {
-                  setError(err?.message || "Couldn’t create your account. Please try again.");
+                const code = err instanceof ApiError ? err.code : undefined;
+                const status = err instanceof ApiError ? err.status : 0;
+
+                let message: string;
+                switch (code) {
+                  case "WEAK_PASSWORD":
+                    message = "Password is too short. Use at least 8 characters.";
+                    break;
+                  case "EMAIL_IN_USE":
+                    message = err.message; // Server message is already good
+                    break;
+                  case "DB_SCHEMA_MISSING_COLUMN":
+                    message = "Sign up is temporarily unavailable. Please try again in a few minutes.";
+                    break;
+                  case "SIGNUP_FAILED":
+                    message = "Could not create your account right now. Please try again shortly.";
+                    break;
+                  default:
+                    if (status === 500 || status === 0) {
+                      message = "Something went wrong on our end. Please try again in a moment.";
+                    } else {
+                      message = err?.message || "Couldn't create your account. Please try again.";
+                    }
                 }
+                setError(message);
               } finally {
                 setSubmitting(false);
               }

@@ -23,12 +23,34 @@ export function LoginFormCard({ reason }: { reason?: string }) {
     try {
       await login({ email, password });
       router.push("/app/dashboard");
-    } catch (e: any) {
-      if (e instanceof ApiError && e.status === 401) {
-        setError("Incorrect email or password.");
-      } else {
-        setError(e?.message || "Couldn’t log you in. Please try again.");
+    } catch (err: any) {
+      // Map error codes to user-friendly messages
+      const code = err instanceof ApiError ? err.code : undefined;
+      const status = err instanceof ApiError ? err.status : 0;
+
+      let message: string;
+      switch (code) {
+        case "INVALID_CREDENTIALS":
+        case "NO_PASSWORD_SET":
+          message = err.message; // Use server's message - it's already user-friendly
+          break;
+        case "DB_SCHEMA_MISSING_COLUMN":
+          message = "Login is temporarily unavailable. Please try again in a few minutes.";
+          break;
+        case "LOGIN_UNAVAILABLE":
+          message = "Login is temporarily unavailable. Please try again shortly.";
+          break;
+        default:
+          // For 401 without specific code, or generic errors
+          if (status === 401) {
+            message = "Incorrect email or password.";
+          } else if (status === 500 || status === 0) {
+            message = "Something went wrong on our end. Please try again in a moment.";
+          } else {
+            message = err?.message || "Couldn't log you in. Please try again.";
+          }
       }
+      setError(message);
     } finally {
       setIsSubmitting(false);
     }
