@@ -336,22 +336,39 @@ export class AuthService {
     }
 
     const prismaAny = this.prisma as any;
-    const user = await prismaAny.user.findUnique({ where: { email: normalizedEmail } });
-    // Avoid account enumeration; always return ok.
-    if (!user) return { ok: true };
+    try {
+      const user = await prismaAny.user.findUnique({ where: { email: normalizedEmail } });
+      // Avoid account enumeration; always return ok.
+      if (!user) return { ok: true };
 
-    const passwordHash = await bcrypt.hash(newPassword, 10);
-    await prismaAny.user.update({
-      where: { id: user.id },
-      data: { passwordHash },
-    });
+      const passwordHash = await bcrypt.hash(newPassword, 10);
+      await prismaAny.user.update({
+        where: { id: user.id },
+        data: { passwordHash },
+      });
+    } catch (err: any) {
+      // Make failures actionable instead of returning 500.
+      const msg = String(err?.message || err);
+      // Prisma error codes vary by driver; handle the common "column does not exist" case.
+      if (err?.code === 'P2022' || msg.toLowerCase().includes('passwordhash')) {
+        throw new BadRequestException({
+          code: 'DB_SCHEMA_OUT_OF_DATE',
+          message:
+            'Password reset is not ready because the database schema is missing `passwordHash`. Add the `passwordHash` column in Supabase and retry.',
+        });
+      }
+      throw new BadRequestException({
+        code: 'RESET_FAILED',
+        message: 'Could not reset password right now. Please try again in a minute.',
+      });
+    }
 
     await this.auditService.createAuditEvent({
       businessId: null,
-      actorUserId: user.id,
+      actorUserId: null,
       action: 'auth.password_reset.direct',
       entityType: 'User',
-      entityId: user.id,
+      entityId: normalizedEmail,
       metaJson: { email: normalizedEmail },
       ip: ip ? String(ip) : null,
       userAgent: userAgent ? String(userAgent) : null,

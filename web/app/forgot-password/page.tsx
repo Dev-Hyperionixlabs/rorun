@@ -8,6 +8,7 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { resetPasswordDirect } from "@/lib/api/auth";
 import { useToast } from "@/components/ui/toast";
+import { ApiError } from "@/lib/api/client";
 
 export default function ForgotPasswordPage() {
   const { addToast } = useToast();
@@ -52,7 +53,13 @@ export default function ForgotPasswordPage() {
                 });
                 window.location.href = "/login";
               } catch (err: any) {
-                setError(err?.message || "Could not reset password");
+                if (err instanceof ApiError && err.code === "DB_SCHEMA_OUT_OF_DATE") {
+                  setError("Password reset isn’t ready yet (server needs a small DB update). Please contact support/admin.");
+                } else if (err instanceof ApiError && err.code === "WEAK_PASSWORD") {
+                  setError("Password is too short. Use at least 8 characters.");
+                } else {
+                  setError(err?.message || "Could not reset password");
+                }
               } finally {
                 setSubmitting(false);
               }
