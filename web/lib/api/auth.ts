@@ -7,21 +7,40 @@ export interface LoginResponse {
   accessToken: string;
   user: {
     id: string;
-    phone: string;
+    phone?: string | null;
     name?: string;
     email?: string;
     languagePref?: string;
   };
 }
 
-export async function login(args: {
-  phone: string;
-  name?: string;
-  email?: string;
-}): Promise<LoginResponse> {
+export async function login(args: { email: string; password: string }): Promise<LoginResponse> {
   const response = await api.post<any>(
     "/auth/login",
-    { phone: args.phone, name: args.name, email: args.email },
+    { email: args.email, password: args.password },
+    { skipAuth: true }
+  );
+
+  const accessToken: string | undefined =
+    response?.accessToken || response?.access_token;
+  if (accessToken) {
+    storeAuthToken(accessToken);
+  }
+
+  return {
+    accessToken: accessToken || "",
+    user: response.user,
+  };
+}
+
+export async function signup(args: {
+  email: string;
+  password: string;
+  name?: string;
+}): Promise<LoginResponse> {
+  const response = await api.post<any>(
+    "/auth/signup",
+    { email: args.email, password: args.password, name: args.name },
     { skipAuth: true }
   );
 

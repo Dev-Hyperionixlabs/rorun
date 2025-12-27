@@ -13,8 +13,10 @@ datasource db {
 
 model User {
   id            String   @id @default(uuid())
-  phone         String   @unique
+  // Email/password auth: phone is optional (kept for legacy + future SMS/OTP).
+  phone         String?  @unique
   email         String?  @unique
+  passwordHash  String?
   name          String?
   languagePref  String   @default("en")
   createdAt     DateTime @default(now())

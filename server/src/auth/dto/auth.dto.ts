@@ -39,3 +39,32 @@ export class LoginDto {
   @IsOptional()
   email?: string;
 }
+
+export class SignupDto {
+  @ApiProperty({ example: 'teddy@company.com' })
+  @IsEmail()
+  @IsNotEmpty()
+  email: string;
+
+  @ApiProperty({ example: 'Teddy Ono', required: false })
+  @IsString()
+  @IsOptional()
+  name?: string;
+
+  @ApiProperty({ example: 'StrongPassword123' })
+  @IsString()
+  @IsNotEmpty()
+  password: string;
+}
+
+export class EmailLoginDto {
+  @ApiProperty({ example: 'teddy@company.com' })
+  @IsEmail()
+  @IsNotEmpty()
+  email: string;
+
+  @ApiProperty({ example: 'StrongPassword123' })
+  @IsString()
+  @IsNotEmpty()
+  password: string;
+}

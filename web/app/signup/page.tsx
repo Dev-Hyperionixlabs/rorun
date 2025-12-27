@@ -7,13 +7,13 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { AuthCard } from "@/components/auth-card";
 import { PublicShell } from "@/components/public/PublicShell";
-import { login } from "@/lib/api/auth";
+import { signup } from "@/lib/api/auth";
 
 export default function SignupPage() {
   const router = useRouter();
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
-  const [phone, setPhone] = useState("");
+  const [password, setPassword] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -21,10 +21,10 @@ export default function SignupPage() {
     try {
       const raw = localStorage.getItem("rorun_signup_draft_v1");
       if (!raw) return;
-      const parsed = JSON.parse(raw) as { name?: string; email?: string; phone?: string };
+      const parsed = JSON.parse(raw) as { name?: string; email?: string; password?: string };
       if (parsed?.name) setName(parsed.name);
       if (parsed?.email) setEmail(parsed.email);
-      if (parsed?.phone) setPhone(parsed.phone);
+      if (parsed?.password) setPassword(parsed.password);
     } catch {
       // ignore
     }
@@ -34,12 +34,12 @@ export default function SignupPage() {
     try {
       localStorage.setItem(
         "rorun_signup_draft_v1",
-        JSON.stringify({ name, email, phone })
+        JSON.stringify({ name, email, password })
       );
     } catch {
       // ignore
     }
-  }, [name, email, phone]);
+  }, [name, email, password]);
 
   return (
     <PublicShell
@@ -71,7 +71,7 @@ export default function SignupPage() {
               setSubmitting(true);
               setError(null);
               try {
-                await login({ phone, name: name || undefined, email: email || undefined });
+                await signup({ email, password, name: name || undefined });
                 router.push("/onboarding");
               } catch (err: any) {
                 setError(err?.message || "Sign up failed");
@@ -94,25 +94,28 @@ export default function SignupPage() {
               />
             </div>
             <div className="space-y-1 text-sm">
-              <label className="text-sm font-medium text-slate-800">
-                Phone number
-              </label>
-              <Input
-                placeholder="+2348012345678"
-                value={phone}
-                onChange={(e) => setPhone(e.target.value)}
-                required
-              />
-            </div>
             <div className="space-y-1 text-sm">
               <label className="text-sm font-medium text-slate-800">
-                Work email (optional)
+                Work email
               </label>
               <Input
                 type="email"
                 placeholder="you@business.com"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
+                required
+              />
+            </div>
+            <div className="space-y-1 text-sm">
+              <label className="text-sm font-medium text-slate-800">
+                Password
+              </label>
+              <Input
+                type="password"
+                placeholder="At least 8 characters"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                required
               />
             </div>
             <Button

@@ -10,7 +10,8 @@ import { login } from "@/lib/api/auth";
 
 export function LoginFormCard({ reason }: { reason?: string }) {
   const router = useRouter();
-  const [phone, setPhone] = useState("");
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -19,7 +20,7 @@ export function LoginFormCard({ reason }: { reason?: string }) {
     setIsSubmitting(true);
     setError(null);
     try {
-      await login({ phone });
+      await login({ email, password });
       router.push("/app/dashboard");
     } catch (e: any) {
       setError(e?.message || "Login failed");
@@ -31,7 +32,7 @@ export function LoginFormCard({ reason }: { reason?: string }) {
   return (
     <AuthCard
       title="Log in to Rorun"
-      subtitle="Use your phone number to continue."
+      subtitle="Use your email and password to continue."
       footer={
         <>
           New to Rorun?{" "}
@@ -60,12 +61,26 @@ export function LoginFormCard({ reason }: { reason?: string }) {
       <form className="space-y-4" onSubmit={onSubmit}>
         <div className="space-y-1 text-sm">
           <label className="text-sm font-medium text-slate-800">
-            Phone number
+            Email
           </label>
           <Input
-            placeholder="+2348012345678"
-            value={phone}
-            onChange={(e) => setPhone(e.target.value)}
+            type="email"
+            placeholder="you@business.com"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            required
+          />
+        </div>
+
+        <div className="space-y-1 text-sm">
+          <label className="text-sm font-medium text-slate-800">
+            Password
+          </label>
+          <Input
+            type="password"
+            placeholder="••••••••"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
             required
           />
         </div>

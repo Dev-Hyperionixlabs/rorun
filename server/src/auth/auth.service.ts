@@ -6,6 +6,7 @@ import * as crypto from 'crypto';
 import { PrismaService } from '../prisma/prisma.service';
 import { OtpService } from '../otp/otp.service';
 import { AuditService } from '../audit/audit.service';
+import * as bcrypt from 'bcrypt';
 
 @Injectable()
 export class AuthService {
@@ -58,6 +59,141 @@ export class AuthService {
     userAgent?: string,
   ): Promise<{ access_token: string; user: any }> {
     throw new UnauthorizedException('OTP login is temporarily disabled. Use /auth/login.');
+  }
+
+  private async signJwt(user: any) {
+    const payload = {
+      sub: user.id,
+      email: user.email,
+      phone: user.phone,
+      jti: crypto.randomUUID(),
+    };
+    try {
+      return this.jwtService.sign(payload);
+    } catch (err: any) {
+      const msg = String(err?.message || err);
+      if (msg.toLowerCase().includes('secret') && msg.toLowerCase().includes('value')) {
+        throw new BadRequestException({
+          code: 'JWT_SECRET_MISSING',
+          message:
+            'Server auth is misconfigured (JWT_SECRET missing). Set JWT_SECRET in the server environment and redeploy.',
+        });
+      }
+      throw new BadRequestException({
+        code: 'JWT_SIGN_FAILED',
+        message: 'Could not create a session token. Please try again shortly.',
+      });
+    }
+  }
+
+  async signupWithPassword(
+    email: string,
+    password: string,
+    name?: string,
+    ip?: string,
+    userAgent?: string,
+  ): Promise<{ access_token: string; accessToken: string; user: any }> {
+    // Some environments may have stale Prisma client typings. Use a narrow escape hatch
+    // for the new `passwordHash` field to avoid blocking builds/editor typechecks.
+    const prismaAny = this.prisma as any;
+
+    const normalizedEmail = email.trim().toLowerCase();
+    if (password.length < 8) {
+      throw new BadRequestException({
+        code: 'WEAK_PASSWORD',
+        message: 'Password must be at least 8 characters.',
+      });
+    }
+
+    const existing = await prismaAny.user.findUnique({
+      where: { email: normalizedEmail },
+    });
+    if (existing) {
+      throw new BadRequestException({
+        code: 'EMAIL_IN_USE',
+        message: 'That email is already in use. Please log in instead.',
+      });
+    }
+
+    const passwordHash = await bcrypt.hash(password, 10);
+    const user = await prismaAny.user.create({
+      data: {
+        email: normalizedEmail,
+        name: name || null,
+        passwordHash,
+      },
+    });
+
+    const access_token = await this.signJwt(user);
+
+    await this.auditService.createAuditEvent({
+      businessId: null,
+      actorUserId: user.id,
+      action: 'auth.signup.password',
+      entityType: 'User',
+      entityId: user.id,
+      metaJson: { email: normalizedEmail },
+      ip: ip ? String(ip) : null,
+      userAgent: userAgent ? String(userAgent) : null,
+    });
+
+    return {
+      access_token,
+      accessToken: access_token,
+      user: {
+        id: user.id,
+        phone: user.phone,
+        email: user.email,
+        name: user.name,
+        languagePref: user.languagePref,
+      },
+    };
+  }
+
+  async loginWithPassword(
+    email: string,
+    password: string,
+    ip?: string,
+    userAgent?: string,
+  ): Promise<{ access_token: string; accessToken: string; user: any }> {
+    const prismaAny = this.prisma as any;
+    const normalizedEmail = email.trim().toLowerCase();
+    const user = await prismaAny.user.findUnique({
+      where: { email: normalizedEmail },
+    });
+    if (!user || !user.passwordHash) {
+      throw new UnauthorizedException('Invalid email or password');
+    }
+
+    const ok = await bcrypt.compare(password, user.passwordHash);
+    if (!ok) {
+      throw new UnauthorizedException('Invalid email or password');
+    }
+
+    const access_token = await this.signJwt(user);
+
+    await this.auditService.createAuditEvent({
+      businessId: null,
+      actorUserId: user.id,
+      action: 'auth.login.password',
+      entityType: 'User',
+      entityId: user.id,
+      metaJson: { email: normalizedEmail },
+      ip: ip ? String(ip) : null,
+      userAgent: userAgent ? String(userAgent) : null,
+    });
+
+    return {
+      access_token,
+      accessToken: access_token,
+      user: {
+        id: user.id,
+        phone: user.phone,
+        email: user.email,
+        name: user.name,
+        languagePref: user.languagePref,
+      },
+    };
   }
 
   /**
@@ -114,24 +250,7 @@ export class AuthService {
       }
     }
 
-    const payload = { sub: user.id, phone: user.phone, jti: crypto.randomUUID() };
-    let access_token: string;
-    try {
-      access_token = this.jwtService.sign(payload);
-    } catch (err: any) {
-      const msg = String(err?.message || err);
-      if (msg.toLowerCase().includes('secret') && msg.toLowerCase().includes('value')) {
-        throw new BadRequestException({
-          code: 'JWT_SECRET_MISSING',
-          message:
-            'Server auth is misconfigured (JWT_SECRET missing). Set JWT_SECRET in the server environment and redeploy.',
-        });
-      }
-      throw new BadRequestException({
-        code: 'JWT_SIGN_FAILED',
-        message: 'Could not create a session token. Please try again shortly.',
-      });
-    }
+    const access_token = await this.signJwt(user);
 
     await this.auditService.createAuditEvent({
       businessId: null,

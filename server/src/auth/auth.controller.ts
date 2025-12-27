@@ -2,7 +2,7 @@ import { Controller, Post, Body, UseGuards, Get, Request, HttpException, HttpSta
 import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
 import { AuthService } from './auth.service';
 import { JwtAuthGuard } from './guards/jwt-auth.guard';
-import { RequestOtpDto, VerifyOtpDto, LoginDto } from './dto/auth.dto';
+import { RequestOtpDto, VerifyOtpDto, SignupDto, EmailLoginDto } from './dto/auth.dto';
 import { Throttle } from '@nestjs/throttler';
 
 @ApiTags('auth')
@@ -11,12 +11,21 @@ export class AuthController {
   constructor(private readonly authService: AuthService) {}
 
   @Post('login')
-  @ApiOperation({ summary: 'Temporary passwordless login (no OTP)' })
+  @ApiOperation({ summary: 'Login with email + password' })
   @Throttle({ default: { limit: 20, ttl: 60_000 } })
-  async login(@Body() dto: LoginDto, @Request() req) {
+  async login(@Body() dto: EmailLoginDto, @Request() req) {
     const ip = req.ip || req.headers['x-forwarded-for'] || req.connection?.remoteAddress;
     const userAgent = req.headers['user-agent'];
-    return this.authService.loginWithoutOtp(dto.phone, dto.name, dto.email, ip, userAgent);
+    return this.authService.loginWithPassword(dto.email, dto.password, ip, userAgent);
+  }
+
+  @Post('signup')
+  @ApiOperation({ summary: 'Sign up with email + password' })
+  @Throttle({ default: { limit: 20, ttl: 60_000 } })
+  async signup(@Body() dto: SignupDto, @Request() req) {
+    const ip = req.ip || req.headers['x-forwarded-for'] || req.connection?.remoteAddress;
+    const userAgent = req.headers['user-agent'];
+    return this.authService.signupWithPassword(dto.email, dto.password, dto.name, ip, userAgent);
   }
 
   @Post('request-otp')
