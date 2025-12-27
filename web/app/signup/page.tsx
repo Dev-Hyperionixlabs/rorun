@@ -94,7 +94,6 @@ export default function SignupPage() {
               />
             </div>
             <div className="space-y-1 text-sm">
-            <div className="space-y-1 text-sm">
               <label className="text-sm font-medium text-slate-800">
                 Work email
               </label>
