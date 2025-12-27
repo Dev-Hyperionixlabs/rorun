@@ -11,6 +11,7 @@ import { BusinessRole, NIGERIAN_STATES } from "@/lib/types";
 import { Select } from "@/components/ui/select";
 import { BrandLink } from "@/components/BrandLink";
 import { createBusiness } from "@/lib/api/businesses";
+import { useToast } from "@/components/ui/toast";
 
 const steps = [
   "Basics",
@@ -36,6 +37,7 @@ export default function OnboardingPage() {
   const router = useRouter();
   const { businesses, updateBusiness, evaluateEligibility, refresh } = useMockApi();
   const business = businesses[0];
+  const { addToast } = useToast();
   const [step, setStep] = useState(() => {
     if (typeof window === "undefined") return 0;
     try {
@@ -137,7 +139,17 @@ export default function OnboardingPage() {
       }
 
       if (businessId) {
-        await evaluateEligibility(businessId);
+        // Eligibility is "best effort" — if it fails, we still finish onboarding
+        // and let the dashboard load. We'll re-calc tax safety later.
+        try {
+          await evaluateEligibility(businessId);
+        } catch (e: any) {
+          addToast({
+            title: "Workspace created",
+            description: "We’ll calculate your tax safety shortly. You can continue to the dashboard now.",
+            variant: "success",
+          });
+        }
       }
 
       // Ensure app state is fresh (business list, alerts, etc.)

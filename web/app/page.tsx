@@ -2,6 +2,7 @@ import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import type { Metadata } from "next";
 import { PublicShell } from "@/components/public/PublicShell";
+import { AutoRedirectToDashboard } from "@/components/public/AutoRedirectToDashboard";
 
 export const metadata: Metadata = {
   title: "Rorun – Tax-safe, compliant, and organised — even when your tax is ₦0",
@@ -11,6 +12,7 @@ export const metadata: Metadata = {
 export default function LandingPage() {
   return (
     <PublicShell>
+      <AutoRedirectToDashboard />
       <main className="mx-auto flex w-full max-w-5xl flex-1 flex-col items-start justify-center gap-10 px-4 pb-16 pt-6 md:flex-row md:items-center md:px-6">
         <section className="max-w-xl space-y-5">
           <h1 className="text-3xl font-semibold leading-tight md:text-4xl">

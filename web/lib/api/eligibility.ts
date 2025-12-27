@@ -4,7 +4,9 @@ import { api } from "./client";
 import { EligibilityResult } from "../types";
 
 export async function runEligibilityCheck(businessId: string): Promise<EligibilityResult> {
-  return api.post(`/businesses/${businessId}/eligibility`);
+  // Backend route: POST /businesses/:id/eligibility/evaluate
+  // (Older client used POST /businesses/:id/eligibility which does not exist.)
+  return api.post(`/businesses/${businessId}/eligibility/evaluate`);
 }
 
 export async function getEligibilityResult(
@@ -12,8 +14,9 @@ export async function getEligibilityResult(
   year?: number
 ): Promise<EligibilityResult | null> {
   try {
-    const params = year ? `?year=${year}` : "";
-    return await api.get(`/businesses/${businessId}/eligibility${params}`);
+    const y = year ?? new Date().getFullYear();
+    // Backend route: GET /businesses/:id/eligibility/:year
+    return await api.get(`/businesses/${businessId}/eligibility/${y}`);
   } catch {
     return null;
   }

@@ -5,8 +5,10 @@ import { useSearchParams } from "next/navigation";
 import { useMockApi } from "@/lib/mock-api";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Upload, FileText, Eye } from "lucide-react";
+import { Upload, FileText, Eye, Lock, Landmark } from "lucide-react";
 import { useToast } from "@/components/ui/toast";
+import Link from "next/link";
+import { useFeatures } from "@/hooks/use-features";
 
 export default function DocumentsPage() {
   return (
@@ -19,10 +21,13 @@ export default function DocumentsPage() {
 function DocumentsPageInner() {
   const searchParams = useSearchParams();
   const filter = searchParams.get("filter");
-  const { documents, addDocument, transactions, loading } = useMockApi();
+  const { documents, addDocument, transactions, loading, currentBusinessId, businesses } = useMockApi();
   const { addToast } = useToast();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [uploading, setUploading] = useState(false);
+  const businessId = currentBusinessId || businesses[0]?.id || null;
+  const { hasFeature } = useFeatures(businessId);
+  const canConnectBank = businessId ? hasFeature("bank_connect") : false;
 
   // Find high-value transactions without receipts
   const highValueWithoutDocs = useMemo(() => {
@@ -91,6 +96,31 @@ function DocumentsPageInner() {
           {uploading ? "Uploading..." : "Upload"}
         </Button>
       </div>
+
+      {/* Bank connection upsell (user requested visible upgrade CTA) */}
+      {businessId && !canConnectBank && (
+        <Card className="bg-amber-50 border-amber-200">
+          <CardContent className="py-4">
+            <div className="flex items-start gap-3">
+              <div className="mt-0.5 rounded-full bg-white/70 p-2 border border-amber-200">
+                <Landmark className="h-4 w-4 text-amber-800" />
+              </div>
+              <div className="flex-1">
+                <p className="text-sm font-semibold text-amber-900">Connect your bank</p>
+                <p className="mt-1 text-xs text-amber-700">
+                  Link your bank to pull transactions automatically and reduce manual entry. Requires Basic plan or higher.
+                </p>
+              </div>
+              <Link href="/app/pricing">
+                <Button size="sm" variant="secondary" className="text-xs">
+                  <Lock className="mr-1 h-3.5 w-3.5" />
+                  Upgrade
+                </Button>
+              </Link>
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       <input
         ref={fileInputRef}
