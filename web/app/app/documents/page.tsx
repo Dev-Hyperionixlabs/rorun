@@ -157,7 +157,7 @@ function DocumentsPageInner() {
                     <p className="text-sm font-medium text-slate-900">{doc.fileName}</p>
                     <p className="text-xs text-slate-500">
                       {doc.type || doc.fileType || "Document"} •{" "}
-                      {new Date(doc.uploadedAt).toDateString()}
+                      {new Date(doc.uploadedAt || (doc as any).createdAt).toDateString()}
                     </p>
                   </div>
                 </div>

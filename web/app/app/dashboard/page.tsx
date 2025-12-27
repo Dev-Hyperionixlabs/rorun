@@ -36,14 +36,6 @@ function DashboardContent() {
   );
   const [packError, setPackError] = useState<string | null>(null);
 
-  if (!business) {
-    return <div className="text-sm text-slate-500">Loading dashboard…</div>;
-  }
-
-  useEffect(() => {
-    loadBusiness();
-  }, []);
-
   const loadBusiness = async () => {
     try {
       const businesses = await getBusinesses();
@@ -61,6 +53,14 @@ function DashboardContent() {
       console.error("Failed to load business:", error);
     }
   };
+
+  useEffect(() => {
+    loadBusiness();
+  }, []);
+
+  if (!business) {
+    return <div className="text-sm text-slate-500">Loading dashboard…</div>;
+  }
   const income = transactions
     .filter((t) => t.type === "income")
     .reduce((sum, t) => sum + t.amount, 0);

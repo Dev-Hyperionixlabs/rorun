@@ -23,13 +23,31 @@ import { getTransactions as fetchTransactions, createTransaction, deleteTransact
 import { getAlerts as fetchAlerts, markAlertRead as markAlertReadApi } from "./api/alerts";
 import { getKnowledgeArticles } from "./api/knowledge";
 import { runEligibilityCheck } from "./api/eligibility";
-import { getLatestFilingPack, createFilingPack } from "./api/filingPacks";
+import {
+  getFilingPackStatus,
+  generateFilingPack as generateFilingPackApi,
+  FilingPack as ApiFilingPack,
+} from "./api/filingPacks";
 import { getYearSummary } from "./api/summary";
 import { updateProfileApi } from "./api/profile";
 import { getDocuments as fetchDocuments, uploadDocument } from "./api/documents";
 import { ApiError } from "./api/client";
 
 type Document = import("./api/documents").Document;
+
+function toUiFilingPack(pack: ApiFilingPack): FilingPack {
+  return {
+    id: pack.id,
+    businessId: pack.businessId,
+    taxYear: pack.taxYear,
+    createdAt: pack.createdAt,
+    createdByUserId: (pack as any).requestedByUserId || (pack as any).createdByUserId || "",
+    status: pack.status === "ready" ? "ready" : "failed",
+    pdfUrl: pack.pdfUrl ?? null,
+    csvUrl: pack.csvUrl ?? null,
+    metadataJson: null,
+  };
+}
 
 interface AppState {
   loading: boolean;
@@ -215,9 +233,23 @@ export const MockApiProvider: React.FC<{ children: React.ReactNode }> = ({ child
         }));
       },
       async generateFilingPack(bId: string, year: number) {
-        const existing = await getLatestFilingPack(bId, year);
-        if (existing) return existing;
-        return createFilingPack(bId, year);
+        // First check if a ready pack already exists
+        const existing = await getFilingPackStatus(bId, year);
+        if (existing.pack?.status === "ready") return toUiFilingPack(existing.pack);
+
+        // Trigger generation
+        await generateFilingPackApi(bId, year);
+
+        // Poll until ready/failed (bounded)
+        for (let i = 0; i < 15; i++) {
+          const { pack } = await getFilingPackStatus(bId, year);
+          if (pack?.status === "ready") return toUiFilingPack(pack);
+          if (pack?.status === "failed") {
+            throw new Error(pack.errorMessage || "Filing pack generation failed");
+          }
+          await new Promise((r) => setTimeout(r, 1500));
+        }
+        throw new Error("Filing pack is still generating. Please check back soon.");
       },
       async addDocument(file, relatedTransactionId) {
         if (!businessId) throw new ApiError(400, "No business selected");

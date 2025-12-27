@@ -60,3 +60,19 @@ export function getFilingPackDownloadUrl(
   return `${base}/businesses/${businessId}/filing-pack/${packId}/download/${type}`;
 }
 
+// Backwards-compatible aliases (used by mock flows)
+export async function getLatestFilingPack(
+  businessId: string,
+  taxYear?: number
+): Promise<FilingPack | null> {
+  const { pack } = await getFilingPackStatus(businessId, taxYear);
+  return pack ?? null;
+}
+
+export async function createFilingPack(
+  businessId: string,
+  taxYear: number
+): Promise<{ packId: string; status: string }> {
+  return generateFilingPack(businessId, taxYear);
+}
+
