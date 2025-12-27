@@ -73,13 +73,45 @@ export class AuthService {
     userAgent?: string,
   ): Promise<{ access_token: string; accessToken: string; user: any }> {
     let user = await this.usersService.findByPhone(phone);
-    if (!user) {
-      user = await this.usersService.create({ phone, name, email });
-    } else if ((name && !user.name) || (email && !user.email)) {
-      user = await this.usersService.update(user.id, {
-        ...(name && !user.name ? { name } : {}),
-        ...(email && !user.email ? { email } : {}),
-      } as any);
+    try {
+      if (!user) {
+        // Phone is the primary identifier. Email is optional and may already be in use.
+        user = await this.usersService.create({
+          phone,
+          ...(name ? { name } : {}),
+          ...(email ? { email } : {}),
+        } as any);
+      } else if ((name && !user.name) || (email && !user.email)) {
+        user = await this.usersService.update(user.id, {
+          ...(name && !user.name ? { name } : {}),
+          ...(email && !user.email ? { email } : {}),
+        } as any);
+      }
+    } catch (err: any) {
+      // Avoid 500s for common constraint violations (e.g. email already taken).
+      if (err?.code === 'P2002') {
+        const targets = err?.meta?.target;
+        const targetList = Array.isArray(targets) ? targets : targets ? [targets] : [];
+        if (targetList.includes('email')) {
+          // Retry without email (phone-based account still works).
+          if (!user) {
+            user = await this.usersService.create({
+              phone,
+              ...(name ? { name } : {}),
+            } as any);
+          }
+        } else if (targetList.includes('phone')) {
+          // Race: user was created concurrently, re-fetch.
+          user = await this.usersService.findByPhone(phone);
+        }
+      }
+
+      if (!user) {
+        throw new BadRequestException({
+          code: 'LOGIN_FAILED',
+          message: 'Could not create/login user. Please verify your details and try again.',
+        });
+      }
     }
 
     const payload = { sub: user.id, phone: user.phone, jti: crypto.randomUUID() };
