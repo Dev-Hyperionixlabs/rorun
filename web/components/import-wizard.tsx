@@ -1,9 +1,10 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Button } from "./ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "./ui/card";
 import { Input } from "./ui/input";
+import { Select } from "./ui/select";
 import { useToast } from "./ui/toast";
 import { api } from "@/lib/api/client";
 import { X, Upload, FileText } from "lucide-react";
@@ -27,6 +28,7 @@ interface ImportLine {
   amount: number;
   direction: string;
   suggestedCategoryId: string | null;
+  aiConfidence?: number | null;
 }
 
 export function ImportWizard({ businessId, onClose, onSuccess }: ImportWizardProps) {
@@ -34,11 +36,69 @@ export function ImportWizard({ businessId, onClose, onSuccess }: ImportWizardPro
   const [sourceType, setSourceType] = useState<"csv" | "paste">("paste");
   const [rawText, setRawText] = useState("");
   const [csvFile, setCsvFile] = useState<File | null>(null);
+  const [csvHeaders, setCsvHeaders] = useState<string[]>([]);
+  const [csvMapping, setCsvMapping] = useState<{
+    date: string;
+    description: string;
+    amount: string;
+    debit: string;
+    credit: string;
+  }>({ date: "", description: "", amount: "", debit: "", credit: "" });
   const [batchId, setBatchId] = useState<string | null>(null);
   const [batch, setBatch] = useState<ImportBatch | null>(null);
   const [selectedLines, setSelectedLines] = useState<Set<string>>(new Set());
   const [loading, setLoading] = useState(false);
   const { addToast } = useToast();
+
+  const MAPPING_KEY = useMemo(() => `rorun_csv_mapping_v1_${businessId}`, [businessId]);
+
+  useEffect(() => {
+    try {
+      const raw = window.localStorage.getItem(MAPPING_KEY);
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (parsed?.date && parsed?.description) {
+          setCsvMapping((m) => ({ ...m, ...parsed }));
+        }
+      }
+    } catch {
+      // ignore
+    }
+  }, [MAPPING_KEY]);
+
+  useEffect(() => {
+    if (sourceType !== "csv" || !csvFile) return;
+    (async () => {
+      const text = await csvFile.text();
+      const firstLine = text.split(/\r?\n/).find((l) => l.trim().length > 0) || "";
+      const headers = firstLine.split(",").map((h) => h.trim().replace(/^"|"$/g, ""));
+      setCsvHeaders(headers);
+      const lower = headers.map((h) => h.toLowerCase());
+      const pick = (candidates: string[]) => {
+        const i = lower.findIndex((h) => candidates.includes(h));
+        return i >= 0 ? headers[i] : "";
+      };
+      setCsvMapping((m) => ({
+        ...m,
+        date: m.date || pick(["date", "transaction date", "value date"]),
+        description: m.description || pick(["description", "narration", "details", "remark"]),
+        amount: m.amount || pick(["amount", "amt"]),
+        debit: m.debit || pick(["debit"]),
+        credit: m.credit || pick(["credit"]),
+      }));
+    })().catch(() => setCsvHeaders([]));
+  }, [sourceType, csvFile]);
+
+  const mappingValid =
+    sourceType !== "csv" ||
+    (!!csvMapping.date &&
+      !!csvMapping.description &&
+      (!!csvMapping.amount || (!!csvMapping.debit && !!csvMapping.credit)));
+
+  const mappingOptions = useMemo(
+    () => [{ value: "", label: "Select…" }, ...csvHeaders.map((h) => ({ value: h, label: h }))],
+    [csvHeaders]
+  );
 
   const handleStep1Next = async () => {
     if (sourceType === "paste" && !rawText.trim()) {
@@ -58,6 +118,14 @@ export function ImportWizard({ businessId, onClose, onSuccess }: ImportWizardPro
       });
       return;
     }
+    if (sourceType === "csv" && !mappingValid) {
+      addToast({
+        title: "Mapping required",
+        description: "Select columns for Date, Description, and Amount (or Debit + Credit).",
+        variant: "error",
+      });
+      return;
+    }
 
     setLoading(true);
     try {
@@ -66,10 +134,47 @@ export function ImportWizard({ businessId, onClose, onSuccess }: ImportWizardPro
       if (sourceType === "paste") {
         createDto.rawText = rawText;
       } else {
-        // For CSV, we'd upload the file first, then create import with documentId
-        // For now, read file content and send as rawText
-        const text = await csvFile!.text();
-        createDto.rawText = text;
+        // CSV: normalize to a 4-column CSV that backend parser understands: date, description, debit, credit
+        const raw = await csvFile!.text();
+        const lines = raw.split(/\r?\n/).filter((l) => l.trim().length > 0);
+        if (lines.length < 2) throw new Error("CSV looks empty.");
+
+        const header = lines[0].split(",").map((h) => h.trim().replace(/^"|"$/g, ""));
+        const idx = (name: string) => header.findIndex((h) => h === name);
+        const iDate = idx(csvMapping.date);
+        const iDesc = idx(csvMapping.description);
+        const iAmt = csvMapping.amount ? idx(csvMapping.amount) : -1;
+        const iDebit = csvMapping.debit ? idx(csvMapping.debit) : -1;
+        const iCredit = csvMapping.credit ? idx(csvMapping.credit) : -1;
+
+        const out: string[] = ["date,description,debit,credit"];
+        for (const row of lines.slice(1)) {
+          const cols = row.split(",").map((c) => c.trim().replace(/^"|"$/g, ""));
+          const dateStr = cols[iDate] || "";
+          const descStr = cols[iDesc] || "";
+          let debit = "";
+          let credit = "";
+          if (iAmt >= 0) {
+            const amtRaw = (cols[iAmt] || "").replace(/[,\s₦$]/g, "");
+            const n = Number(amtRaw);
+            if (Number.isFinite(n)) {
+              if (n < 0) debit = String(Math.abs(n));
+              else credit = String(n);
+            }
+          } else {
+            debit = (cols[iDebit] || "").replace(/[,\s₦$]/g, "");
+            credit = (cols[iCredit] || "").replace(/[,\s₦$]/g, "");
+          }
+          out.push(`${dateStr},${JSON.stringify(descStr).slice(1, -1)},${debit},${credit}`);
+        }
+
+        try {
+          window.localStorage.setItem(MAPPING_KEY, JSON.stringify(csvMapping));
+        } catch {
+          // ignore
+        }
+
+        createDto.rawText = out.join("\n");
         createDto.sourceType = "csv";
       }
 
@@ -89,7 +194,12 @@ export function ImportWizard({ businessId, onClose, onSuccess }: ImportWizardPro
       );
       
       setBatch(batchData);
-      setSelectedLines(new Set(batchData.lines.map((l) => l.id)));
+      const chosen = new Set(
+        (batchData.lines as any[])
+          .filter((l) => (l.aiConfidence ?? 0.8) >= 0.75)
+          .map((l) => l.id)
+      );
+      setSelectedLines(chosen.size ? chosen : new Set(batchData.lines.map((l) => l.id)));
       setStep(2);
     } catch (e: any) {
       addToast({
@@ -223,6 +333,61 @@ export function ImportWizard({ businessId, onClose, onSuccess }: ImportWizardPro
                     onChange={(e) => setCsvFile(e.target.files?.[0] || null)}
                     className="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm"
                   />
+                  {csvHeaders.length > 0 && (
+                    <div className="mt-3 space-y-3 rounded-xl border border-slate-200 bg-slate-50 p-3">
+                      <p className="text-xs font-semibold text-slate-700">Map columns</p>
+                      <div className="grid gap-3 md:grid-cols-2">
+                        <div className="space-y-1">
+                          <p className="text-xs text-slate-600">Date</p>
+                          <Select
+                            value={csvMapping.date}
+                            onChange={(v) => setCsvMapping((m) => ({ ...m, date: v }))}
+                            options={mappingOptions}
+                          />
+                        </div>
+                        <div className="space-y-1">
+                          <p className="text-xs text-slate-600">Description</p>
+                          <Select
+                            value={csvMapping.description}
+                            onChange={(v) => setCsvMapping((m) => ({ ...m, description: v }))}
+                            options={mappingOptions}
+                          />
+                        </div>
+                        <div className="space-y-1">
+                          <p className="text-xs text-slate-600">Amount</p>
+                          <Select
+                            value={csvMapping.amount}
+                            onChange={(v) => setCsvMapping((m) => ({ ...m, amount: v }))}
+                            options={mappingOptions}
+                          />
+                          <p className="text-[11px] text-slate-500">
+                            If your CSV has separate Debit/Credit columns, leave Amount empty and map Debit + Credit.
+                          </p>
+                        </div>
+                        <div className="space-y-1">
+                          <p className="text-xs text-slate-600">Debit (optional)</p>
+                          <Select
+                            value={csvMapping.debit}
+                            onChange={(v) => setCsvMapping((m) => ({ ...m, debit: v }))}
+                            options={mappingOptions}
+                          />
+                        </div>
+                        <div className="space-y-1">
+                          <p className="text-xs text-slate-600">Credit (optional)</p>
+                          <Select
+                            value={csvMapping.credit}
+                            onChange={(v) => setCsvMapping((m) => ({ ...m, credit: v }))}
+                            options={mappingOptions}
+                          />
+                        </div>
+                      </div>
+                      {!mappingValid && (
+                        <p className="text-xs font-semibold text-amber-700">
+                          Map Date + Description and either Amount or Debit + Credit to continue.
+                        </p>
+                      )}
+                    </div>
+                  )}
                 </div>
               )}
             </div>
@@ -267,6 +432,12 @@ export function ImportWizard({ businessId, onClose, onSuccess }: ImportWizardPro
                         line.direction === "credit" ? "text-emerald-700" : "text-red-700"
                       }`}>
                         {line.direction === "credit" ? "+" : "-"}₦{Number(line.amount).toLocaleString()}
+                      </div>
+                      <div className="col-span-4 text-[11px] text-slate-500 flex items-center justify-between">
+                        <span>Confidence: {Math.round(((line as any).aiConfidence ?? 0.8) * 100)}%</span>
+                        {((line as any).aiConfidence ?? 0.8) < 0.75 && (
+                          <span className="text-amber-700 font-semibold">Needs review</span>
+                        )}
                       </div>
                     </div>
                   </label>

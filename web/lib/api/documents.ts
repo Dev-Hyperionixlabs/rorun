@@ -19,6 +19,7 @@ export interface Document {
   fileUrl?: string;
   url?: string;
   relatedTransactionId?: string;
+  ocrStatus?: string;
   createdAt: string;
   uploadedAt?: string;
   viewUrl?: string;
@@ -45,6 +46,7 @@ export async function getDocuments(businessId: string): Promise<Document[]> {
     fileType: doc.fileType || doc.type,
     uploadedAt: doc.uploadedAt || doc.createdAt,
     createdAt: doc.createdAt || doc.uploadedAt,
+    ocrStatus: doc.ocrStatus || doc.status,
   }));
 }
 
@@ -84,6 +86,39 @@ export async function uploadDocument(
     fileType: doc.fileType || doc.type,
     uploadedAt: doc.uploadedAt || doc.createdAt,
     createdAt: doc.createdAt || doc.uploadedAt,
+    ocrStatus: doc.ocrStatus || doc.status,
+  };
+}
+
+export async function updateDocument(
+  businessId: string,
+  docId: string,
+  dto: { relatedTransactionId?: string | null }
+): Promise<Document> {
+  const token = getStoredAuthToken();
+  const res = await fetch(`${API_URL}/businesses/${businessId}/documents/${docId}`, {
+    method: "PUT",
+    headers: {
+      Authorization: token ? `Bearer ${token}` : "",
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(dto),
+  });
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(text || "Failed to update document");
+  }
+  const doc = await res.json();
+  return {
+    ...doc,
+    url: doc.url || doc.fileUrl || doc.viewUrl || doc.storageUrl,
+    fileUrl: doc.fileUrl || doc.url || doc.viewUrl || doc.storageUrl,
+    fileName: doc.fileName || doc.name || doc.originalName,
+    type: doc.type || doc.fileType || doc.documentType,
+    fileType: doc.fileType || doc.type,
+    uploadedAt: doc.uploadedAt || doc.createdAt,
+    createdAt: doc.createdAt || doc.uploadedAt,
+    ocrStatus: doc.ocrStatus || doc.status,
   };
 }
 

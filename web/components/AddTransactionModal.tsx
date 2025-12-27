@@ -19,12 +19,20 @@ export function AddTransactionModal({
   businessId,
   type,
   onCreated,
+  initial,
 }: {
   open: boolean;
   onClose: () => void;
   businessId: string;
   type: TxType;
-  onCreated?: () => void;
+  onCreated?: (txId: string) => void;
+  initial?: {
+    amount?: number;
+    date?: string;
+    description?: string;
+    categoryId?: string;
+    paymentMethod?: string;
+  };
 }) {
   const { addToast } = useToast();
   const [amount, setAmount] = useState("");
@@ -45,6 +53,13 @@ export function AddTransactionModal({
 
   useEffect(() => {
     if (!open) return;
+    // Prefill when opening
+    setAmount(initial?.amount != null ? String(initial.amount) : "");
+    setDate(initial?.date || new Date().toISOString().slice(0, 10));
+    setDescription(initial?.description || "");
+    setPaymentMethod(initial?.paymentMethod || "");
+    setCategoryId(initial?.categoryId || "");
+
     // Load categories on open (best-effort; optional)
     let cancelled = false;
     (async () => {
@@ -63,7 +78,7 @@ export function AddTransactionModal({
     return () => {
       cancelled = true;
     };
-  }, [open, businessId]);
+  }, [open, businessId, initial]);
 
   useEffect(() => {
     if (!open) return;
@@ -83,7 +98,7 @@ export function AddTransactionModal({
           ? `${description || ""}${description ? " " : ""}(Payment: ${paymentMethod.trim()})`
           : description || undefined;
 
-      await api.post(`/businesses/${businessId}/transactions`, {
+      const created = await api.post<any>(`/businesses/${businessId}/transactions`, {
         type,
         amount: Number(amount),
         date,
@@ -98,7 +113,7 @@ export function AddTransactionModal({
         variant: "success",
       });
       onClose();
-      onCreated?.();
+      onCreated?.(created?.id || "");
       // reset
       setAmount("");
       setDescription("");

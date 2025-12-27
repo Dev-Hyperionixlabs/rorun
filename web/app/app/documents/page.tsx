@@ -9,6 +9,8 @@ import { Upload, FileText, Eye, Lock, Landmark } from "lucide-react";
 import { useToast } from "@/components/ui/toast";
 import Link from "next/link";
 import { useFeatures } from "@/hooks/use-features";
+import { AddTransactionModal } from "@/components/AddTransactionModal";
+import { updateDocument } from "@/lib/api/documents";
 
 export default function DocumentsPage() {
   return (
@@ -21,10 +23,13 @@ export default function DocumentsPage() {
 function DocumentsPageInner() {
   const searchParams = useSearchParams();
   const filter = searchParams.get("filter");
-  const { documents, addDocument, transactions, loading, currentBusinessId, businesses } = useMockApi();
+  const { documents, addDocument, transactions, loading, currentBusinessId, businesses, refresh, currentPlanId } = useMockApi();
   const { addToast } = useToast();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [uploading, setUploading] = useState(false);
+  const [linkingDocId, setLinkingDocId] = useState<string | null>(null);
+  const [txModalOpen, setTxModalOpen] = useState(false);
+  const [txModalDoc, setTxModalDoc] = useState<any>(null);
   const businessId = currentBusinessId || businesses[0]?.id || null;
   const { hasFeature } = useFeatures(businessId);
   const canConnectBank = businessId ? hasFeature("bank_connect") : false;
@@ -80,6 +85,32 @@ function DocumentsPageInner() {
 
   return (
     <div className="space-y-4">
+      {businessId && txModalOpen && (
+        <AddTransactionModal
+          open={txModalOpen}
+          onClose={() => setTxModalOpen(false)}
+          businessId={businessId}
+          type="expense"
+          initial={{
+            description: txModalDoc?.fileName ? `Receipt: ${txModalDoc.fileName}` : "",
+          }}
+          onCreated={async (txId) => {
+            if (!txModalDoc?.id || !txId) return;
+            try {
+              setLinkingDocId(txModalDoc.id);
+              await updateDocument(businessId, txModalDoc.id, { relatedTransactionId: txId });
+              addToast({ title: "Linked receipt", description: "Document attached to transaction.", variant: "success" });
+              await refresh();
+            } catch (e: any) {
+              addToast({ title: "Couldn’t link receipt", description: e?.message || "Please try again.", variant: "error" });
+            } finally {
+              setLinkingDocId(null);
+              setTxModalOpen(false);
+              setTxModalDoc(null);
+            }
+          }}
+        />
+      )}
       <div className="flex items-start justify-between">
         <div>
           <h1 className="text-lg font-semibold text-slate-900">Documents</h1>
@@ -189,9 +220,42 @@ function DocumentsPageInner() {
                       {doc.type || doc.fileType || "Document"} •{" "}
                       {new Date(doc.uploadedAt || (doc as any).createdAt).toDateString()}
                     </p>
+                    <div className="mt-1 flex items-center gap-2 text-[11px]">
+                      {doc.relatedTransactionId ? (
+                        <span className="rounded-full bg-emerald-50 px-2 py-0.5 font-semibold text-emerald-700">
+                          Linked
+                        </span>
+                      ) : doc.ocrStatus === "pending" ? (
+                        <span className="rounded-full bg-amber-50 px-2 py-0.5 font-semibold text-amber-700">
+                          Processing
+                        </span>
+                      ) : doc.ocrStatus === "failed" ? (
+                        <span className="rounded-full bg-rose-50 px-2 py-0.5 font-semibold text-rose-700">
+                          Processing failed
+                        </span>
+                      ) : (
+                        <span className="rounded-full bg-slate-100 px-2 py-0.5 font-semibold text-slate-700">
+                          Uploaded
+                        </span>
+                      )}
+                    </div>
                   </div>
                 </div>
                 <div className="flex items-center gap-2">
+                  {!doc.relatedTransactionId && businessId && (
+                    <Button
+                      size="sm"
+                      variant="secondary"
+                      className="text-xs"
+                      disabled={linkingDocId === doc.id}
+                      onClick={() => {
+                        setTxModalDoc(doc);
+                        setTxModalOpen(true);
+                      }}
+                    >
+                      {linkingDocId === doc.id ? "Linking…" : "Create transaction"}
+                    </Button>
+                  )}
                   {(doc.url || doc.fileUrl) && (
                     <a
                       href={doc.url || doc.fileUrl || "#"}

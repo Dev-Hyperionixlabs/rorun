@@ -28,6 +28,7 @@ export default function TransactionsPage() {
 function TransactionsPageInner() {
   const searchParams = useSearchParams();
   const focus = searchParams.get("focus");
+  const openImport = searchParams.get("import") === "true";
   const { addToast } = useToast();
   const { businesses: mockBusinesses } = useMockData();
   
@@ -48,6 +49,12 @@ function TransactionsPageInner() {
     }
     loadBusiness();
   }, []);
+
+  useEffect(() => {
+    if (openImport) {
+      setShowImportWizard(true);
+    }
+  }, [openImport]);
 
   useEffect(() => {
     if (business?.id) {
