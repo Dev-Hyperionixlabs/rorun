@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState, useMemo } from "react";
 import { X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -50,6 +50,23 @@ export function AddTransactionModal({
     const n = Number(amount);
     return Number.isFinite(n) && n > 0;
   }, [amount]);
+
+  // Deduplicate categories by name and filter by type
+  const uniqueCategories = useMemo(() => {
+    const seen = new Set<string>();
+    return categories.filter((c) => {
+      if (c.type !== type && c.type) return false; // Filter by type
+      const key = c.name.toLowerCase();
+      if (seen.has(key)) return false; // Skip duplicates
+      seen.add(key);
+      return true;
+    });
+  }, [categories, type]);
+
+  const categoryOptions = useMemo(() => [
+    { value: "", label: loadingCats ? "Loading categories…" : "No category" },
+    ...uniqueCategories.map((c) => ({ value: c.id, label: c.name })),
+  ], [uniqueCategories, loadingCats]);
 
   useEffect(() => {
     if (!open) return;
@@ -102,9 +119,10 @@ export function AddTransactionModal({
         type,
         amount: Number(amount),
         date,
-        description: finalDescription,
+        description: finalDescription || undefined,
         categoryId: categoryId || undefined,
         source: "manual",
+        currency: "NGN",
       });
 
       addToast({
@@ -131,13 +149,6 @@ export function AddTransactionModal({
   };
 
   if (!open) return null;
-
-  const categoryOptions = [
-    { value: "", label: loadingCats ? "Loading categories…" : "No category" },
-    ...categories
-      .filter((c) => c.type === type || !c.type)
-      .map((c) => ({ value: c.id, label: c.name })),
-  ];
 
   return (
     <div className="fixed inset-0 z-50">

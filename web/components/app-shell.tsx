@@ -126,7 +126,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               onClick={() => {
                 setImpersonatingFlag(false);
                 hardResetSession();
-                window.location.href = "/login";
+                window.location.href = "/admin/dashboard";
               }}
             >
               Stop

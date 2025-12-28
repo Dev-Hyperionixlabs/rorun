@@ -50,11 +50,12 @@ async function main() {
   }
 
   // Create default plans
-  const freePlan = await prisma.plan.upsert({
+  const freePlan = await (prisma as any).plan.upsert({
     where: { id: 'free' },
-    update: {},
+    update: { planKey: 'free' },
     create: {
       id: 'free',
+      planKey: 'free',
       name: 'Free',
       description: 'Basic features for small businesses',
       monthlyPrice: 0,
@@ -67,11 +68,12 @@ async function main() {
     },
   });
 
-  const basicPlan = await prisma.plan.upsert({
+  const basicPlan = await (prisma as any).plan.upsert({
     where: { id: 'basic' },
-    update: {},
+    update: { planKey: 'basic' },
     create: {
       id: 'basic',
+      planKey: 'basic',
       name: 'Basic',
       description: 'Everything in Free, plus filing-ready packs.',
       monthlyPrice: 3500,
@@ -87,11 +89,12 @@ async function main() {
     },
   });
 
-  const businessPlan = await prisma.plan.upsert({
+  const businessPlan = await (prisma as any).plan.upsert({
     where: { id: 'business' },
-    update: {},
+    update: { planKey: 'business' },
     create: {
       id: 'business',
+      planKey: 'business',
       name: 'Business',
       description: 'For SMEs that want to stay ahead of FIRS.',
       monthlyPrice: 8500,
@@ -112,11 +115,12 @@ async function main() {
     },
   });
 
-  const accountantPlan = await prisma.plan.upsert({
+  const accountantPlan = await (prisma as any).plan.upsert({
     where: { id: 'accountant' },
-    update: {},
+    update: { planKey: 'accountant' },
     create: {
       id: 'accountant',
+      planKey: 'accountant',
       name: 'Accountant',
       description: 'For firms managing multiple SME clients.',
       monthlyPrice: 25000,

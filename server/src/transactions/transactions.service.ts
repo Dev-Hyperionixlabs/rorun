@@ -18,20 +18,37 @@ export class TransactionsService {
     // Verify business ownership
     await this.businessesService.findOne(businessId, userId);
 
-    return this.prisma.transaction.create({
-      data: {
-        ...data,
-        businessId,
-        // Manual entries default to business (deterministic + safe because user is explicitly recording)
-        classification: 'business',
-        isBusinessFlag: true,
-      },
-      include: {
-        category: true,
-        aiCategory: true,
-        documents: true,
-      },
-    });
+    try {
+      const result = await this.prisma.transaction.create({
+        data: {
+          ...data,
+          businessId,
+          // Manual entries default to business (deterministic + safe because user is explicitly recording)
+          classification: 'business',
+          isBusinessFlag: true,
+        },
+        include: {
+          category: true,
+          aiCategory: true,
+          documents: true,
+        },
+      });
+      return result;
+    } catch (err: any) {
+      // If relations don't exist, try without includes
+      if (err?.code === 'P2025' || err?.code === 'P2003' || err?.message?.includes('relation') || err?.message?.includes('Foreign key')) {
+        console.error('[TransactionsService.create] Failed with includes, retrying without:', err?.message);
+        return this.prisma.transaction.create({
+          data: {
+            ...data,
+            businessId,
+            classification: 'business',
+            isBusinessFlag: true,
+          },
+        });
+      }
+      throw err;
+    }
   }
 
   async findAll(businessId: string, userId: string, query: TransactionQueryDto) {

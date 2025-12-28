@@ -313,22 +313,73 @@ export class AdminService {
   }
 
   async setWorkspacePlan(id: string, planId: string) {
-    // deactivate current active
-    await this.prisma.subscription.updateMany({
-      where: { businessId: id, status: 'active' },
-      data: { status: 'ended', endsAt: new Date() },
-    });
-    const biz = await this.prisma.business.findUnique({ where: { id } });
-    const sub = await this.prisma.subscription.create({
-      data: {
-        businessId: id,
-        userId: biz?.ownerUserId ?? '',
-        planId,
-        status: 'active',
-        startedAt: new Date(),
-      },
-    });
-    return { planId: sub.planId };
+    try {
+      // Verify plan exists
+      const plan = await this.prisma.plan.findFirst({
+        where: { 
+          OR: [
+            { id: planId },
+            { planKey: planId }
+          ],
+          isActive: true
+        },
+      });
+
+      if (!plan) {
+        throw new Error(`Plan with ID or key '${planId}' not found`);
+      }
+
+      const biz = await this.prisma.business.findUnique({ where: { id } });
+      if (!biz) {
+        throw new Error(`Business with ID '${id}' not found`);
+      }
+
+      const now = new Date();
+      
+      // Deactivate current active subscriptions
+      await this.prisma.subscription.updateMany({
+        where: { businessId: id, status: 'active' },
+        data: { status: 'ended', endsAt: now },
+      }).catch(() => {
+        // Ignore if no active subscriptions exist
+      });
+
+      // Check if subscription already exists for this business
+      const existing = await this.prisma.subscription.findFirst({
+        where: { businessId: id },
+      });
+
+      let sub;
+      if (existing) {
+        // Update existing subscription
+        sub = await this.prisma.subscription.update({
+          where: { id: existing.id },
+          data: {
+            userId: biz.ownerUserId,
+            planId: plan.id,
+            status: 'active',
+            startedAt: now,
+            endsAt: null,
+          },
+        });
+      } else {
+        // Create new subscription
+        sub = await this.prisma.subscription.create({
+          data: {
+            businessId: id,
+            userId: biz.ownerUserId,
+            planId: plan.id,
+            status: 'active',
+            startedAt: now,
+          },
+        });
+      }
+      
+      return { planId: sub.planId };
+    } catch (err: any) {
+      console.error('[AdminService.setWorkspacePlan] Failed:', err?.message);
+      throw err;
+    }
   }
 
   async listFilingPacks(businessId: string) {
