@@ -84,7 +84,9 @@ const AppContext = createContext<AppContextValue | null>(null);
 
 const CURRENT_BUSINESS_STORAGE_KEY = "rorun_current_business_id";
 
-async function checkApiHealth(baseUrl: string, timeoutMs = 2500): Promise<boolean> {
+// IMPORTANT: Render cold starts + real-world latency can exceed a couple seconds.
+// Keep this aligned with apiFetch timeout (12s) so we don't show false "API unreachable".
+async function checkApiHealth(baseUrl: string, timeoutMs = 12_000): Promise<boolean> {
   const base = baseUrl.replace(/\/$/, "");
   const ctrl = new AbortController();
   const timeout = setTimeout(() => ctrl.abort(), timeoutMs);
