@@ -314,36 +314,43 @@ export class AdminService {
 
   async setWorkspacePlan(id: string, planId: string) {
     try {
-      // Verify plan exists
-      // Try with planKey first (if column exists), fallback to id only
-      let plan = null;
+      // Known plan keys that we support (matches frontend entitlements)
+      const KNOWN_PLANS = ['free', 'basic', 'business', 'accountant'];
+      const normalizedPlanId = planId.toLowerCase();
+      
+      // Try to find plan in DB (optional - plans table may not exist or be seeded)
+      let dbPlanId: string = planId;
       try {
-        plan = await this.prisma.plan.findFirst({
+        let plan = await this.prisma.plan.findFirst({
           where: { 
             OR: [
               { id: planId },
-              { planKey: planId }
+              { planKey: normalizedPlanId }
             ],
             isActive: true
           },
-        });
-      } catch (err: any) {
-        // If planKey column doesn't exist, query by id only
-        if (err?.message?.includes('planKey') || err?.code === 'P2021') {
+        }).catch(() => null);
+        
+        if (!plan) {
           plan = await this.prisma.plan.findFirst({
-            where: { 
-              id: planId,
-              isActive: true
-            },
-          });
-        } else {
-          throw err;
+            where: { id: planId, isActive: true },
+          }).catch(() => null);
         }
+        
+        if (plan) {
+          dbPlanId = plan.id;
+        }
+      } catch (err: any) {
+        console.warn('[AdminService.setWorkspacePlan] Plan lookup failed:', err?.message);
       }
-
-      if (!plan) {
-        throw new Error(`Plan with ID '${planId}' not found`);
+      
+      // If no DB plan found, check if it's a known plan key
+      if (dbPlanId === planId && !KNOWN_PLANS.includes(normalizedPlanId)) {
+        throw new Error(`Plan '${planId}' is not recognized. Use: free, basic, business, or accountant.`);
       }
+      
+      // Use the normalized plan key if DB plan wasn't found
+      const effectivePlanId = dbPlanId || normalizedPlanId;
 
       const biz = await this.prisma.business.findUnique({ where: { id } });
       if (!biz) {
@@ -363,7 +370,7 @@ export class AdminService {
       // Check if subscription already exists for this business
       const existing = await this.prisma.subscription.findFirst({
         where: { businessId: id },
-      });
+      }).catch(() => null);
 
       let sub;
       if (existing) {
@@ -372,7 +379,7 @@ export class AdminService {
           where: { id: existing.id },
           data: {
             userId: biz.ownerUserId,
-            planId: plan.id,
+            planId: effectivePlanId,
             status: 'active',
             startedAt: now,
             endsAt: null,
@@ -384,14 +391,14 @@ export class AdminService {
           data: {
             businessId: id,
             userId: biz.ownerUserId,
-            planId: plan.id,
+            planId: effectivePlanId,
             status: 'active',
             startedAt: now,
           },
         });
       }
       
-      return { planId: sub.planId };
+      return { planId: effectivePlanId };
     } catch (err: any) {
       console.error('[AdminService.setWorkspacePlan] Failed:', err?.message);
       throw err;

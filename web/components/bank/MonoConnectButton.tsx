@@ -69,14 +69,25 @@ export function MonoConnectButton({
     try {
       // Load Mono Connect.js SDK if not already loaded
       if (!window.MonoConnect) {
-        const script = document.createElement("script");
-        script.src = "https://connect.withmono.com/connect.js";
-        script.async = true;
-        await new Promise((resolve, reject) => {
-          script.onload = resolve;
-          script.onerror = reject;
-          document.head.appendChild(script);
-        });
+        try {
+          const script = document.createElement("script");
+          script.src = "https://connect.withmono.com/connect.js";
+          script.async = true;
+          await new Promise((resolve, reject) => {
+            script.onload = resolve;
+            script.onerror = () => reject(new Error("Failed to load bank connection SDK"));
+            document.head.appendChild(script);
+          });
+          // Give the script a moment to initialize
+          await new Promise((r) => setTimeout(r, 500));
+        } catch (err) {
+          throw new Error("Bank connection is temporarily unavailable. Please try again later.");
+        }
+      }
+
+      // Check if SDK loaded successfully
+      if (!window.MonoConnect || typeof window.MonoConnect !== "function") {
+        throw new Error("Bank connection is not available in your region or is blocked by your browser.");
       }
 
       // Get Mono config again to ensure we have the latest publicKey

@@ -43,36 +43,47 @@ export class SubscriptionsService {
     try {
       const now = new Date();
       
-      // Verify plan exists first
-      // Try with planKey first (if column exists), fallback to id only
-      let plan = null;
+      // Known plan keys that we support (matches frontend entitlements)
+      const KNOWN_PLANS = ['free', 'basic', 'business', 'accountant'];
+      const normalizedPlanId = planId.toLowerCase();
+      
+      // Try to find plan in DB (optional - plans table may not exist or be seeded)
+      let dbPlanId: string = planId;
       try {
-        plan = await this.prisma.plan.findFirst({
+        // First try by planKey, then by id
+        let plan = await this.prisma.plan.findFirst({
           where: { 
             OR: [
               { id: planId },
-              { planKey: planId }
+              { planKey: normalizedPlanId }
             ],
             isActive: true
           },
-        });
-      } catch (err: any) {
-        // If planKey column doesn't exist, query by id only
-        if (err?.message?.includes('planKey') || err?.code === 'P2021') {
+        }).catch(() => null);
+        
+        // If planKey query failed, try id only
+        if (!plan) {
           plan = await this.prisma.plan.findFirst({
-            where: { 
-              id: planId,
-              isActive: true
-            },
-          });
-        } else {
-          throw err;
+            where: { id: planId, isActive: true },
+          }).catch(() => null);
         }
+        
+        if (plan) {
+          dbPlanId = plan.id;
+        }
+      } catch (err: any) {
+        // Plan table may not exist - that's OK if planId is a known key
+        console.warn('[SubscriptionsService] Plan lookup failed:', err?.message);
       }
-
-      if (!plan) {
-        throw new BadRequestException(`Plan with ID '${planId}' not found`);
+      
+      // If no DB plan found, check if it's a known plan key (for setups without seeded plans)
+      if (dbPlanId === planId && !KNOWN_PLANS.includes(normalizedPlanId)) {
+        // Only reject if it's not a known plan key
+        throw new BadRequestException(`Plan '${planId}' is not recognized. Use: free, basic, business, or accountant.`);
       }
+      
+      // Use the normalized plan key if DB plan wasn't found
+      const effectivePlanId = dbPlanId || normalizedPlanId;
 
       // Deactivate current active subscriptions
       await this.prisma.subscription.updateMany({
@@ -85,7 +96,7 @@ export class SubscriptionsService {
       // Handle unique constraint: if a subscription already exists for this business, update it
       const existing = await this.prisma.subscription.findFirst({
         where: { businessId },
-      });
+      }).catch(() => null);
 
       let subscription;
       if (existing) {
@@ -94,7 +105,7 @@ export class SubscriptionsService {
           where: { id: existing.id },
           data: {
             userId,
-            planId: plan.id,
+            planId: effectivePlanId,
             status: 'active',
             startedAt: now,
             endsAt: null,
@@ -106,14 +117,14 @@ export class SubscriptionsService {
           data: {
             userId,
             businessId,
-            planId: plan.id,
+            planId: effectivePlanId,
             status: 'active',
             startedAt: now,
           },
         });
       }
 
-      return { planId: subscription.planId, subscription };
+      return { planId: effectivePlanId, subscription };
     } catch (err: any) {
       console.error('[SubscriptionsService.setActiveSubscription] Failed:', err?.message);
       // If it's already a BadRequestException, rethrow it
