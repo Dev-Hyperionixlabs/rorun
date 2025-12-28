@@ -44,18 +44,34 @@ export class SubscriptionsService {
       const now = new Date();
       
       // Verify plan exists first
-      const plan = await this.prisma.plan.findFirst({
-        where: { 
-          OR: [
-            { id: planId },
-            { planKey: planId }
-          ],
-          isActive: true
-        },
-      });
+      // Try with planKey first (if column exists), fallback to id only
+      let plan = null;
+      try {
+        plan = await this.prisma.plan.findFirst({
+          where: { 
+            OR: [
+              { id: planId },
+              { planKey: planId }
+            ],
+            isActive: true
+          },
+        });
+      } catch (err: any) {
+        // If planKey column doesn't exist, query by id only
+        if (err?.message?.includes('planKey') || err?.code === 'P2021') {
+          plan = await this.prisma.plan.findFirst({
+            where: { 
+              id: planId,
+              isActive: true
+            },
+          });
+        } else {
+          throw err;
+        }
+      }
 
       if (!plan) {
-        throw new BadRequestException(`Plan with ID or key '${planId}' not found`);
+        throw new BadRequestException(`Plan with ID '${planId}' not found`);
       }
 
       // Deactivate current active subscriptions
