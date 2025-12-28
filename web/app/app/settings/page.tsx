@@ -91,8 +91,10 @@ function SettingsContent() {
 
 function PlanSettingsSection() {
   const { currentPlanId, setCurrentPlan, businesses } = useMockApi();
+  const { addToast } = useToast();
   const business = businesses[0];
   const [error, setError] = useState<string | null>(null);
+  const [success, setSuccess] = useState<string | null>(null);
   const [loading, setLoading] = useState<string | null>(null);
   const [billingStatus, setBillingStatus] = useState<any>(null);
   const searchParams = useSearchParams();
@@ -105,6 +107,7 @@ function PlanSettingsSection() {
         // Check for payment success
         const status = searchParams.get("status");
         if (status === "success") {
+          addToast({ title: "Payment successful!", description: "Your plan has been upgraded." });
           // Poll billing status until active
           const pollStatus = async () => {
             try {
@@ -139,15 +142,25 @@ function PlanSettingsSection() {
       }
     }
     load();
-  }, [business, setCurrentPlan, searchParams, router]);
+  }, [business, setCurrentPlan, searchParams, router, addToast]);
 
   const handleSelect = async (id: PlanId) => {
     if (!business) return;
+    
+    // Accountant plan - open contact form
+    if (id === "accountant") {
+      const subject = encodeURIComponent("Rorun Accountant Plan Inquiry");
+      const body = encodeURIComponent(`Hi Rorun team,\n\nI'm interested in the Accountant plan for my firm.\n\nBusiness: ${business.name}\n\nPlease get in touch to discuss.\n\nThanks!`);
+      window.open(`mailto:hello@rorun.ng?subject=${subject}&body=${body}`, "_blank");
+      return;
+    }
+
     setError(null);
+    setSuccess(null);
     setLoading(id);
 
     try {
-      // Prefer real billing if available; otherwise fall back to server-side plan switch (simulated billing).
+      // Prefer real billing if available; otherwise fall back to server-side plan switch.
       if (id !== "free") {
         try {
           const { createCheckoutSession } = await import("@/lib/api/billing");
@@ -156,15 +169,22 @@ function PlanSettingsSection() {
             window.location.href = authorizationUrl;
             return;
           }
-        } catch {
-          // billing not configured; fall back
+        } catch (e: any) {
+          // billing not configured or failed; fall back to direct plan change
+          console.warn("Billing checkout failed, using direct plan change:", e?.message);
         }
       }
 
+      // Direct plan change (simulated billing for testing or free plan)
       const updated = await setCurrentPlanApi(business.id, id);
       setCurrentPlan(updated);
+      setSuccess(`Plan updated to ${PLANS.find(p => p.id === id)?.name || id}!`);
+      addToast({ 
+        title: "Plan updated", 
+        description: `You're now on the ${PLANS.find(p => p.id === id)?.name || id} plan.` 
+      });
     } catch (e: any) {
-      setError(e?.message || "Failed to start checkout");
+      setError(e?.message || "Failed to update plan. Please try again.");
     } finally {
       setLoading(null);
     }
@@ -175,6 +195,11 @@ function PlanSettingsSection() {
 
   return (
     <div className="space-y-4">
+      {success && (
+        <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">
+          {success}
+        </div>
+      )}
       {currentSubscription && (
         <Card className="bg-white">
           <CardHeader className="pb-2">
@@ -270,7 +295,13 @@ function PlanSettingsSection() {
                     onClick={() => handleSelect(plan.id)}
                     disabled={loading === plan.id || isProcessing}
                   >
-                    {loading === plan.id ? "Processing..." : plan.id === "accountant" ? "Contact us" : `Choose ${plan.name}`}
+                    {loading === plan.id 
+                      ? "Processing..." 
+                      : plan.id === "accountant" 
+                        ? "Contact sales" 
+                        : plan.id === "free" 
+                          ? "Downgrade to Free" 
+                          : `Upgrade to ${plan.name}`}
                   </button>
                 )}
               </div>
