@@ -33,7 +33,7 @@ import {
 import { getYearSummary } from "./api/summary";
 import { updateProfileApi } from "./api/profile";
 import { getDocuments as fetchDocuments, uploadDocument } from "./api/documents";
-import { ApiError, API_BASE } from "./api/client";
+import { ApiError, API_BASE, api } from "./api/client";
 
 type Document = import("./api/documents").Document;
 
