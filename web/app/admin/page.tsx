@@ -3,6 +3,8 @@
 import { useEffect, useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Users, Building2, FileText, TrendingUp } from "lucide-react";
+import { ErrorState } from "@/components/ui/page-state";
+import { getAdminDashboardStats } from "@/lib/api/admin";
 
 interface DashboardStats {
   totalUsers: number;
@@ -19,25 +21,10 @@ export default function AdminDashboardPage() {
   useEffect(() => {
     const fetchStats = async () => {
       try {
-        const adminKey = localStorage.getItem("rorun_admin_key") || "";
-        const res = await fetch(
-          `${process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001"}/admin/dashboard-stats`,
-          {
-            headers: { "x-admin-key": adminKey },
-          }
-        );
-        if (!res.ok) throw new Error("Failed to fetch stats");
-        const data = await res.json();
+        const data = await getAdminDashboardStats();
         setStats(data);
       } catch (err: any) {
-        setError(err.message || "Failed to load dashboard");
-        // Fallback mock data for development
-        setStats({
-          totalUsers: 42,
-          totalBusinesses: 38,
-          transactionsYearToDate: 1247,
-          planBreakdown: { free: 25, basic: 8, business: 4, accountant: 1 },
-        });
+        setError(err?.message || "Failed to load dashboard");
       } finally {
         setLoading(false);
       }
@@ -62,11 +49,7 @@ export default function AdminDashboardPage() {
         </p>
       </div>
 
-      {error && (
-        <div className="rounded-lg bg-amber-50 px-4 py-3 text-sm text-amber-700">
-          Using mock data: {error}
-        </div>
-      )}
+      {error && <ErrorState title="Couldn’t load admin dashboard" message={error} />}
 
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
         <Card>
@@ -106,7 +89,7 @@ export default function AdminDashboardPage() {
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold text-slate-900">
-              {stats?.transactionsYearToDate?.toLocaleString() ?? 0}
+              {Number(stats?.transactionsYearToDate ?? 0).toLocaleString() ?? 0}
             </div>
           </CardContent>
         </Card>

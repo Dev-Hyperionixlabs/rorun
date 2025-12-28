@@ -177,7 +177,7 @@ function DocumentsPageInner() {
                     key={tx.id}
                     className="text-xs bg-white px-2 py-1 rounded border border-amber-200"
                   >
-                    {tx.description} • ₦{tx.amount.toLocaleString()}
+                    {tx.description} • ₦{Number((tx as any).amount ?? 0).toLocaleString()}
                   </div>
                 ))}
               </div>

@@ -83,9 +83,9 @@ export default function SummaryPage() {
           </CardTitle>
         </CardHeader>
         <CardContent className="grid gap-3 md:grid-cols-3">
-          <Stat label="Total income" value={`₦${summary.totalIncome.toLocaleString()}`} />
-          <Stat label="Total expenses" value={`₦${summary.totalExpenses.toLocaleString()}`} />
-          <Stat label="Profit" value={`₦${summary.profit.toLocaleString()}`} />
+          <Stat label="Total income" value={`₦${Number((summary as any).totalIncome ?? 0).toLocaleString()}`} />
+          <Stat label="Total expenses" value={`₦${Number((summary as any).totalExpenses ?? 0).toLocaleString()}`} />
+          <Stat label="Profit" value={`₦${Number((summary as any).profit ?? 0).toLocaleString()}`} />
         </CardContent>
       </Card>
       )}

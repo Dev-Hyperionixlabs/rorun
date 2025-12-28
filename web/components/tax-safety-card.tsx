@@ -9,8 +9,11 @@ import { useFirsReady } from "@/hooks/use-firs-ready";
 import { useToast } from "./ui/toast";
 
 export function TaxSafetyCard() {
-  const { businesses, transactions } = useMockApi();
-  const business = businesses[0];
+  const { businesses, transactions, currentBusinessId } = useMockApi();
+  const business =
+    (currentBusinessId ? businesses.find((b) => b.id === currentBusinessId) : null) ||
+    businesses[0] ||
+    null;
   const year = new Date().getFullYear();
 
   const { status, error } = useFirsReady(business, transactions, year);
@@ -47,12 +50,7 @@ export function TaxSafetyCard() {
     );
   }
 
-  const bandLabel =
-    status.band === "high"
-      ? "FIRS-Ready: Green – You’re in a strong position."
-      : status.band === "medium"
-      ? "FIRS-Ready: Amber – A few gaps to fix."
-      : "FIRS-Ready: Red – High risk if FIRS asks today.";
+  const bandLabel = `FIRS-Ready: ${status.label ?? (status.band === "high" ? "Green" : status.band === "medium" ? "Amber" : "Red")} – ${status.message}`;
 
   const bandColor =
     status.band === "high"

@@ -3,6 +3,7 @@
 import Link from "next/link";
 import Image from "next/image";
 import { usePathname } from "next/navigation";
+import { useRouter } from "next/navigation";
 import { useState } from "react";
 import {
   LayoutDashboard,
@@ -13,6 +14,7 @@ import {
   Menu,
   LogOut,
 } from "lucide-react";
+import { clearAdminKey, getAdminKey } from "@/lib/admin-key";
 
 const navItems = [
   { href: "/admin", label: "Dashboard", icon: LayoutDashboard },
@@ -28,7 +30,17 @@ export default function AdminLayout({
   children: React.ReactNode;
 }) {
   const pathname = usePathname();
+  const router = useRouter();
   const [sidebarOpen, setSidebarOpen] = useState(false);
+
+  // Redirect to /admin/login if key is missing (except on login page)
+  if (typeof window !== "undefined") {
+    const key = getAdminKey();
+    if (!key && pathname !== "/admin/login") {
+      router.replace("/admin/login?reason=unauthorized");
+      return null;
+    }
+  }
 
   return (
     <div className="flex min-h-screen bg-slate-100">
@@ -72,13 +84,17 @@ export default function AdminLayout({
           })}
         </nav>
         <div className="absolute bottom-0 left-0 right-0 border-t border-slate-700 p-4">
-          <Link
-            href="/app/dashboard"
-            className="flex items-center gap-3 text-sm text-slate-400 hover:text-white"
+          <button
+            type="button"
+            className="flex w-full items-center gap-3 text-sm text-slate-400 hover:text-white"
+            onClick={() => {
+              clearAdminKey();
+              router.replace("/admin/login");
+            }}
           >
             <LogOut className="h-4 w-4" />
-            Exit Admin
-          </Link>
+            Log out admin
+          </button>
         </div>
       </aside>
 

@@ -11,6 +11,7 @@ import { TaxSafetyBadge } from "./tax-safety-badge";
 import { hardResetSession } from "@/lib/session";
 import { BrandLink } from "./BrandLink";
 import { logout } from "@/lib/api/auth";
+import { isImpersonating, setImpersonatingFlag } from "@/lib/admin-key";
 
 const navItems = [
   { href: "/app/dashboard", label: "Dashboard" },
@@ -29,6 +30,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const [navOpen, setNavOpen] = useState(false);
   const [showAlerts, setShowAlerts] = useState(false);
   const [showProfileMenu, setShowProfileMenu] = useState(false);
+  const [impersonating, setImpersonating] = useState(false);
 
   // Hooks must be called before any early returns
   const sortedAlerts = useMemo(
@@ -41,6 +43,14 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       window.location.href = "/login";
     }
   }, [loading, error, user]);
+
+  useEffect(() => {
+    try {
+      setImpersonating(isImpersonating());
+    } catch {
+      setImpersonating(false);
+    }
+  }, []);
 
   if (loading) {
     return (
@@ -86,6 +96,23 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
   return (
     <div className="min-h-screen bg-slate-50 text-slate-900">
+      {impersonating && (
+        <div className="bg-amber-50 border-b border-amber-200 px-4 py-2 text-xs text-amber-900">
+          <div className="mx-auto flex max-w-5xl items-center justify-between gap-3">
+            <span className="font-semibold">Impersonating user</span>
+            <button
+              className="text-xs font-semibold text-amber-800 hover:text-amber-900"
+              onClick={() => {
+                setImpersonatingFlag(false);
+                hardResetSession();
+                window.location.href = "/login";
+              }}
+            >
+              Stop
+            </button>
+          </div>
+        </div>
+      )}
       <header className="relative z-40 border-b border-slate-200 bg-white">
         <div className="mx-auto flex max-w-5xl items-center justify-between px-4 py-3 md:px-6">
           <div className="flex items-center gap-3">

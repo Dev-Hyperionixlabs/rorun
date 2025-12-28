@@ -6,8 +6,11 @@ import { useMockApi } from "@/lib/mock-api";
 import { useFirsReady } from "@/hooks/use-firs-ready";
 
 export function TaxSafetyBadge() {
-  const { businesses, transactions } = useMockApi();
-  const business = businesses[0];
+  const { businesses, transactions, currentBusinessId } = useMockApi();
+  const business =
+    (currentBusinessId ? businesses.find((b) => b.id === currentBusinessId) : null) ||
+    businesses[0] ||
+    null;
   const year = new Date().getFullYear();
 
   const { status } = useFirsReady(business, transactions, year);

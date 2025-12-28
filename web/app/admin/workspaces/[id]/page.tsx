@@ -8,6 +8,11 @@ import { Select } from "@/components/ui/select";
 import { ArrowLeft, Download, RefreshCw, UserCog } from "lucide-react";
 import clsx from "clsx";
 import { PLANS, PlanId } from "@/lib/plans";
+import { ErrorState } from "@/components/ui/page-state";
+import { getAdminWorkspace, impersonateUser, setAdminWorkspacePlan } from "@/lib/api/admin";
+import { storeAuthToken } from "@/lib/auth-token";
+import { setImpersonatingFlag, getAdminKey } from "@/lib/admin-key";
+import { API_BASE } from "@/lib/api/client";
 
 interface WorkspaceDetail {
   business: {
@@ -50,64 +55,32 @@ export default function WorkspaceDetailPage() {
   const [updatingPlan, setUpdatingPlan] = useState(false);
   const [regenerating, setRegenerating] = useState(false);
   const [impersonating, setImpersonating] = useState(false);
-
-  const adminKey = typeof window !== "undefined" ? localStorage.getItem("rorun_admin_key") || "" : "";
-  const apiUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001";
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     const fetchDetail = async () => {
       try {
-        const res = await fetch(`${apiUrl}/admin/workspaces/${id}`, {
-          headers: { "x-admin-key": adminKey },
-        });
-        if (!res.ok) throw new Error("Failed to fetch");
-        const data = await res.json();
+        setError(null);
+        const data = await getAdminWorkspace(id);
         setWorkspace(data);
         setPlanId((data.planId as PlanId) || "free");
-      } catch (err) {
-        // Mock fallback
-        setWorkspace({
-          business: {
-            id,
-            name: "Ajala Ventures",
-            state: "Lagos",
-            sector: "Retail",
-            legalForm: "sole_proprietor",
-            ownerUserId: "user-1",
-            createdAt: new Date().toISOString(),
-          },
-          planId: "basic",
-          firsReady: {
-            score: 72,
-            band: "medium",
-            reasons: ["MEDIUM_RECORDS_COVERAGE", "LOW_RECEIPT_COVERAGE"],
-          },
-          transactions: {
-            yearToDateCount: 48,
-            lastTransactionAt: new Date().toISOString(),
-          },
-          filingPacks: [],
-        });
-        setPlanId("basic");
+      } catch (err: any) {
+        setWorkspace(null);
+        setError(err?.message || "Failed to load workspace.");
       } finally {
         setLoading(false);
       }
     };
     fetchDetail();
-  }, [id, adminKey, apiUrl]);
+  }, [id]);
 
   const handlePlanChange = async (newPlan: PlanId) => {
     setPlanId(newPlan);
     setUpdatingPlan(true);
     try {
-      await fetch(`${apiUrl}/admin/workspaces/${id}/plan`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "x-admin-key": adminKey,
-        },
-        body: JSON.stringify({ planId: newPlan }),
-      });
+      await setAdminWorkspacePlan(id, newPlan);
+      const refreshed = await getAdminWorkspace(id);
+      setWorkspace(refreshed);
     } catch (err) {
       console.error("Failed to update plan", err);
     } finally {
@@ -118,8 +91,11 @@ export default function WorkspaceDetailPage() {
   const handleRegenerate = async () => {
     setRegenerating(true);
     try {
+      if (!API_BASE) throw new Error("API is not configured.");
+      const adminKey = getAdminKey();
+      if (!adminKey) throw new Error("Admin key missing.");
       const year = new Date().getFullYear();
-      await fetch(`${apiUrl}/admin/workspaces/${id}/filing-packs`, {
+      await fetch(`${API_BASE}/admin/workspaces/${id}/filing-packs`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -140,18 +116,11 @@ export default function WorkspaceDetailPage() {
     if (!workspace) return;
     setImpersonating(true);
     try {
-      const res = await fetch(`${apiUrl}/admin/impersonate`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "x-admin-key": adminKey,
-        },
-        body: JSON.stringify({ userId: workspace.business.ownerUserId }),
-      });
-      const data = await res.json();
-      if (data.token) {
-        localStorage.setItem("rorun_auth_token", data.token);
-        window.open("/app/dashboard", "_blank");
+      const data = await impersonateUser(workspace.business.ownerUserId);
+      if (data?.token) {
+        storeAuthToken(data.token);
+        setImpersonatingFlag(true);
+        window.location.href = "/app/dashboard";
       }
     } catch (err) {
       console.error("Impersonation failed", err);
@@ -172,6 +141,10 @@ export default function WorkspaceDetailPage() {
         <div className="text-sm text-slate-500">Loading workspace...</div>
       </div>
     );
+  }
+
+  if (error) {
+    return <ErrorState title="Couldn’t load workspace" message={error} onRetry={() => window.location.reload()} />;
   }
 
   if (!workspace) {

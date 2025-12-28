@@ -7,6 +7,8 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Search, ChevronRight } from "lucide-react";
 import clsx from "clsx";
+import { ErrorState } from "@/components/ui/page-state";
+import { getAdminWorkspaces } from "@/lib/api/admin";
 
 interface Workspace {
   id: string;
@@ -25,50 +27,19 @@ export default function WorkspacesListPage() {
   const [workspaces, setWorkspaces] = useState<Workspace[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     const fetchWorkspaces = async () => {
       try {
-        const adminKey = localStorage.getItem("rorun_admin_key") || "";
         const params = new URLSearchParams();
         if (search) params.set("q", search);
-        const res = await fetch(
-          `${process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001"}/admin/workspaces?${params}`,
-          {
-            headers: { "x-admin-key": adminKey },
-          }
-        );
-        if (!res.ok) throw new Error("Failed to fetch");
-        const data = await res.json();
-        setWorkspaces(data.items || []);
-      } catch (err) {
-        // Fallback mock data
-        setWorkspaces([
-          {
-            id: "biz-1",
-            name: "Ajala Ventures",
-            state: "Lagos",
-            sector: "Retail",
-            planId: "basic",
-            createdAt: new Date().toISOString(),
-            taxYear: 2025,
-            firsReadyScore: 72,
-            firsReadyBand: "medium",
-            transactionsCountYearToDate: 48,
-          },
-          {
-            id: "biz-2",
-            name: "Nkechi's Kitchen",
-            state: "Abuja",
-            sector: "Food & Beverage",
-            planId: "free",
-            createdAt: new Date().toISOString(),
-            taxYear: 2025,
-            firsReadyScore: 45,
-            firsReadyBand: "low",
-            transactionsCountYearToDate: 12,
-          },
-        ]);
+        setError(null);
+        const data = await getAdminWorkspaces(search);
+        setWorkspaces((data.items || []) as any);
+      } catch (err: any) {
+        setError(err?.message || "Failed to load workspaces.");
+        setWorkspaces([]);
       } finally {
         setLoading(false);
       }
@@ -107,6 +78,8 @@ export default function WorkspacesListPage() {
         <div className="flex h-64 items-center justify-center">
           <div className="text-sm text-slate-500">Loading workspaces...</div>
         </div>
+      ) : error ? (
+        <ErrorState title="Couldn’t load workspaces" message={error} onRetry={() => window.location.reload()} />
       ) : workspaces.length === 0 ? (
         <Card>
           <CardContent className="py-12 text-center">
