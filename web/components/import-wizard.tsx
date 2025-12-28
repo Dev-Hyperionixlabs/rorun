@@ -8,11 +8,13 @@ import { Select } from "./ui/select";
 import { useToast } from "./ui/toast";
 import { api } from "@/lib/api/client";
 import { X, Upload, FileText } from "lucide-react";
+import { useRouter } from "next/navigation";
 
 interface ImportWizardProps {
   businessId: string;
   onClose: () => void;
   onSuccess: () => void;
+  redirectToReview?: boolean;
 }
 
 interface ImportBatch {
@@ -31,7 +33,8 @@ interface ImportLine {
   aiConfidence?: number | null;
 }
 
-export function ImportWizard({ businessId, onClose, onSuccess }: ImportWizardProps) {
+export function ImportWizard({ businessId, onClose, onSuccess, redirectToReview = false }: ImportWizardProps) {
+  const router = useRouter();
   const [step, setStep] = useState<1 | 2 | 3>(1);
   const [sourceType, setSourceType] = useState<"csv" | "paste">("paste");
   const [rawText, setRawText] = useState("");
@@ -235,12 +238,16 @@ export function ImportWizard({ businessId, onClose, onSuccess }: ImportWizardPro
 
       addToast({
         title: "Import successful",
-        description: `Created ${selectedLines.size} transaction${selectedLines.size > 1 ? "s" : ""}`,
+        description: `Created ${selectedLines.size} transaction${selectedLines.size > 1 ? "s" : ""}. ${redirectToReview ? "Redirecting to review..." : ""}`,
         variant: "success",
       });
 
       onSuccess();
       onClose();
+      
+      if (redirectToReview) {
+        router.push("/app/review?source=import");
+      }
     } catch (e: any) {
       addToast({
         title: "Approval failed",

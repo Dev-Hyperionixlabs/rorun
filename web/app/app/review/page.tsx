@@ -6,8 +6,8 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/components/ui/toast";
 import { getBusinesses } from "@/lib/api/businesses";
-import { getReviewIssues, rescanReviewIssues, ReviewIssue, ReviewIssueType } from "@/lib/api/review";
-import { Loader2, AlertTriangle, RefreshCw, ChevronRight } from "lucide-react";
+import { getReviewIssues, getReviewIssueCounts, rescanReviewIssues, ReviewIssue, ReviewIssueType, ReviewIssueCounts } from "@/lib/api/review";
+import { Loader2, AlertTriangle, RefreshCw, ChevronRight, CheckCircle2, XCircle, Clock } from "lucide-react";
 import { ErrorState, useSlowLoading } from "@/components/ui/page-state";
 import { useMockApi as useMockData } from "@/lib/mock-api";
 
@@ -24,10 +24,12 @@ const TABS: Array<{ id: "all" | ReviewIssueType | "high"; label: string }> = [
 export default function ReviewPage() {
   const [businessId, setBusinessId] = useState<string | null>(null);
   const [issues, setIssues] = useState<ReviewIssue[]>([]);
+  const [counts, setCounts] = useState<ReviewIssueCounts>({ open: 0, dismissed: 0, resolved: 0 });
   const [loading, setLoading] = useState(true);
   const [businessError, setBusinessError] = useState<string | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [tab, setTab] = useState<(typeof TABS)[number]["id"]>("all");
+  const [statusFilter, setStatusFilter] = useState<"open" | "dismissed" | "resolved" | "all">("open");
   const [rescanning, setRescanning] = useState(false);
   const { addToast } = useToast();
   const taxYear = new Date().getFullYear();
@@ -62,15 +64,22 @@ export default function ReviewPage() {
   useEffect(() => {
     if (!businessId) return;
     load();
-  }, [businessId, tab]);
+  }, [businessId, tab, statusFilter]);
 
   const load = async () => {
     if (!businessId) return;
     try {
       setLoading(true);
       setLoadError(null);
-      const data = await getReviewIssues(businessId, { taxYear, status: "open" });
+      
+      // Load issues with status filter
+      const statusParam = statusFilter === "all" ? undefined : statusFilter;
+      const data = await getReviewIssues(businessId, { taxYear, status: statusParam });
       setIssues(data);
+      
+      // Load counts
+      const c = await getReviewIssueCounts(businessId, taxYear);
+      setCounts(c);
     } catch (e: any) {
       setLoadError(e?.message || "Please try again later.");
       addToast({
@@ -138,6 +147,46 @@ export default function ReviewPage() {
             </>
           )}
         </Button>
+      </div>
+
+      {/* Status Counts */}
+      <div className="grid grid-cols-3 gap-3">
+        <button
+          onClick={() => setStatusFilter("open")}
+          className={`flex items-center gap-3 rounded-xl border p-3 transition ${
+            statusFilter === "open" ? "border-amber-500 bg-amber-50" : "border-slate-200 hover:border-slate-300"
+          }`}
+        >
+          <Clock className="h-5 w-5 text-amber-600" />
+          <div className="text-left">
+            <div className="text-lg font-bold text-slate-900">{counts.open}</div>
+            <div className="text-xs text-slate-500">Open</div>
+          </div>
+        </button>
+        <button
+          onClick={() => setStatusFilter("resolved")}
+          className={`flex items-center gap-3 rounded-xl border p-3 transition ${
+            statusFilter === "resolved" ? "border-emerald-500 bg-emerald-50" : "border-slate-200 hover:border-slate-300"
+          }`}
+        >
+          <CheckCircle2 className="h-5 w-5 text-emerald-600" />
+          <div className="text-left">
+            <div className="text-lg font-bold text-slate-900">{counts.resolved}</div>
+            <div className="text-xs text-slate-500">Resolved</div>
+          </div>
+        </button>
+        <button
+          onClick={() => setStatusFilter("dismissed")}
+          className={`flex items-center gap-3 rounded-xl border p-3 transition ${
+            statusFilter === "dismissed" ? "border-slate-500 bg-slate-50" : "border-slate-200 hover:border-slate-300"
+          }`}
+        >
+          <XCircle className="h-5 w-5 text-slate-500" />
+          <div className="text-left">
+            <div className="text-lg font-bold text-slate-900">{counts.dismissed}</div>
+            <div className="text-xs text-slate-500">Ignored</div>
+          </div>
+        </button>
       </div>
 
       <div className="flex gap-2 border-b border-slate-200 overflow-auto">

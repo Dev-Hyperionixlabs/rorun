@@ -270,6 +270,7 @@ function TransactionsPageInner() {
             setShowImportWizard(false);
             setRefreshKey((k) => k + 1);
           }}
+          redirectToReview
         />
       )}
 

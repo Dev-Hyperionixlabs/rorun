@@ -53,6 +53,33 @@ export async function dismissReviewIssue(businessId: string, id: string) {
   return api.post(`/businesses/${businessId}/review/issues/${id}/dismiss`, {});
 }
 
+export async function resolveReviewIssue(businessId: string, id: string) {
+  return api.post(`/businesses/${businessId}/review/issues/${id}/resolve`, {});
+}
+
+export interface ReviewIssueCounts {
+  open: number;
+  dismissed: number;
+  resolved: number;
+}
+
+export async function getReviewIssueCounts(
+  businessId: string,
+  taxYear: number
+): Promise<ReviewIssueCounts> {
+  try {
+    return await api.get(`/businesses/${businessId}/review/issues/counts?taxYear=${taxYear}`);
+  } catch {
+    // Fallback: calculate counts manually if endpoint doesn't exist
+    const all = await getReviewIssues(businessId, { taxYear });
+    return {
+      open: all.filter((i) => i.status === "open").length,
+      dismissed: all.filter((i) => i.status === "dismissed").length,
+      resolved: all.filter((i) => i.status === "resolved").length,
+    };
+  }
+}
+
 export async function rescanReviewIssues(businessId: string, taxYear: number) {
   return api.post(`/businesses/${businessId}/review/rescan?taxYear=${taxYear}`, {});
 }
