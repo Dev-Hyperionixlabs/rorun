@@ -230,6 +230,9 @@ export default function TaxConfigPage() {
         </div>
       </div>
 
+      {/* Preview Panel */}
+      <PreviewImpactPanel rules={rules} />
+
       {/* Create form */}
       {creating && (
         <Card className="border-emerald-200 bg-emerald-50/50">
@@ -328,6 +331,139 @@ export default function TaxConfigPage() {
         </div>
       )}
     </div>
+  );
+}
+
+function PreviewImpactPanel({ rules }: { rules: TaxRule[] }) {
+  const [turnover, setTurnover] = useState("");
+  const [year, setYear] = useState(new Date().getFullYear());
+  const [legalForm, setLegalForm] = useState("company");
+
+  const numTurnover = parseFloat(turnover.replace(/,/g, "")) || 0;
+
+  // Find matching rules for each tax type
+  const matchingRules = TAX_TYPE_OPTIONS.map(({ value: taxType, label }) => {
+    const matching = rules
+      .filter((r) => r.taxType === taxType && r.year === year)
+      .filter((r) => {
+        const min = r.thresholdMin ?? 0;
+        const max = r.thresholdMax ?? Infinity;
+        return numTurnover >= min && numTurnover <= max;
+      })
+      .sort((a, b) => (b.thresholdMin ?? 0) - (a.thresholdMin ?? 0));
+
+    const rule = matching[0];
+    return {
+      taxType,
+      label,
+      rule,
+      status: rule
+        ? rule.resultJson?.exempt
+          ? "exempt"
+          : rule.resultJson?.required === false
+          ? "optional"
+          : "required"
+        : "unknown",
+      rate: rule?.resultJson?.rate,
+      description: rule?.resultJson?.description,
+    };
+  });
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="text-sm font-semibold text-slate-900">
+          Preview Impact
+        </CardTitle>
+        <p className="text-xs text-slate-500">
+          Test how your rules apply to a hypothetical business.
+        </p>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        <div className="grid grid-cols-3 gap-3">
+          <div className="space-y-1">
+            <label className="text-xs font-medium text-slate-700">Annual Turnover (₦)</label>
+            <Input
+              type="text"
+              placeholder="e.g. 15,000,000"
+              value={turnover}
+              onChange={(e) => setTurnover(e.target.value)}
+            />
+          </div>
+          <div className="space-y-1">
+            <label className="text-xs font-medium text-slate-700">Tax Year</label>
+            <Input
+              type="number"
+              value={year}
+              onChange={(e) => setYear(parseInt(e.target.value) || new Date().getFullYear())}
+            />
+          </div>
+          <div className="space-y-1">
+            <label className="text-xs font-medium text-slate-700">Business Type</label>
+            <select
+              className="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm"
+              value={legalForm}
+              onChange={(e) => setLegalForm(e.target.value)}
+            >
+              <option value="sole_proprietor">Sole Proprietor</option>
+              <option value="partnership">Partnership</option>
+              <option value="company">Company (LLC/Ltd)</option>
+            </select>
+          </div>
+        </div>
+
+        {numTurnover > 0 && (
+          <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
+            <p className="text-xs font-semibold text-slate-700 mb-2">
+              Tax Status for ₦{numTurnover.toLocaleString()} turnover in {year}:
+            </p>
+            <div className="space-y-1.5">
+              {matchingRules.map((m) => (
+                <div
+                  key={m.taxType}
+                  className="flex items-center justify-between text-xs"
+                >
+                  <span className="font-medium text-slate-700">{m.label.split(" ")[0]}</span>
+                  <div className="flex items-center gap-2">
+                    {m.status === "exempt" && (
+                      <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-emerald-700 text-[10px] font-medium">
+                        Exempt
+                      </span>
+                    )}
+                    {m.status === "required" && (
+                      <span className="rounded-full bg-amber-100 px-2 py-0.5 text-amber-700 text-[10px] font-medium">
+                        Required {m.rate !== undefined && `@ ${m.rate}%`}
+                      </span>
+                    )}
+                    {m.status === "optional" && (
+                      <span className="rounded-full bg-slate-200 px-2 py-0.5 text-slate-600 text-[10px] font-medium">
+                        Optional
+                      </span>
+                    )}
+                    {m.status === "unknown" && (
+                      <span className="rounded-full bg-slate-100 px-2 py-0.5 text-slate-500 text-[10px] font-medium">
+                        No rule
+                      </span>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+            {matchingRules.some((m) => m.description) && (
+              <p className="text-[10px] text-slate-500 mt-2 pt-2 border-t border-slate-200">
+                {matchingRules.find((m) => m.description)?.description}
+              </p>
+            )}
+          </div>
+        )}
+
+        {numTurnover === 0 && (
+          <p className="text-xs text-slate-400 text-center py-2">
+            Enter a turnover amount to preview tax status
+          </p>
+        )}
+      </CardContent>
+    </Card>
   );
 }
 

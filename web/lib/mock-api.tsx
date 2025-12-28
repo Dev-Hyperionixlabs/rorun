@@ -329,18 +329,22 @@ export const MockApiProvider: React.FC<{ children: React.ReactNode }> = ({ child
       },
       async addTransaction(input) {
         if (!businessId) throw new ApiError(400, "No business selected");
-        const created = await createTransaction({
-          businessId,
+        // Use api.post directly to ensure proper field mapping
+        const created = await api.post<any>(`/businesses/${businessId}/transactions`, {
           type: input.type,
           amount: input.amount,
           description: input.description,
-          category: (input as any).categoryId,
+          categoryId: (input as any).categoryId || undefined,
           date: input.date,
+          source: 'manual',
+          currency: 'NGN',
         });
         setState((s) => ({
           ...s,
           transactions: [created as Transaction, ...s.transactions],
         }));
+        // Trigger a refresh to update dashboard totals
+        setTimeout(() => refresh(), 500);
         return created as Transaction;
       },
       async deleteTransaction(id) {

@@ -3,6 +3,7 @@ import { ValidationPipe, Logger } from '@nestjs/common';
 import { SwaggerModule, DocumentBuilder } from '@nestjs/swagger';
 import { AppModule } from './app.module';
 import { json } from 'express';
+import { PrismaExceptionFilter } from './filters/prisma-exception.filter';
 
 async function bootstrap() {
   const logger = new Logger('Bootstrap');
@@ -75,6 +76,9 @@ async function bootstrap() {
       },
     }),
   );
+
+  // Global exception filter for Prisma errors - prevents raw stack traces from leaking to clients
+  app.useGlobalFilters(new PrismaExceptionFilter());
 
   // Swagger API documentation (disabled in production)
   if (!isProduction) {

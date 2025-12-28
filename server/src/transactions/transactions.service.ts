@@ -18,15 +18,45 @@ export class TransactionsService {
     // Verify business ownership
     await this.businessesService.findOne(businessId, userId);
 
+    // Build transaction data, handling optional fields carefully
+    const txData: any = {
+      businessId,
+      type: data.type,
+      amount: data.amount,
+      date: new Date(data.date),
+      description: data.description || null,
+      source: data.source || 'manual',
+      currency: data.currency || 'NGN',
+      isBusinessFlag: data.isBusinessFlag !== false,
+    };
+
+    // Only include categoryId if it's a valid UUID and not empty
+    if (data.categoryId && data.categoryId.length > 0) {
+      // Verify category exists before assigning
+      try {
+        const category = await this.prisma.transactionCategory.findUnique({
+          where: { id: data.categoryId },
+        });
+        if (category) {
+          txData.categoryId = data.categoryId;
+        }
+      } catch {
+        // If category lookup fails, proceed without it
+        console.warn(`[TransactionsService.create] Category lookup failed for ${data.categoryId}`);
+      }
+    }
+
+    // Try adding classification column (may not exist in older schemas)
+    try {
+      await this.prisma.$queryRaw`SELECT 1 FROM information_schema.columns WHERE table_name = 'transactions' AND column_name = 'classification' LIMIT 1`;
+      txData.classification = 'business';
+    } catch {
+      // classification column doesn't exist, skip it
+    }
+
     try {
       const result = await this.prisma.transaction.create({
-        data: {
-          ...data,
-          businessId,
-          // Manual entries default to business (deterministic + safe because user is explicitly recording)
-          classification: 'business',
-          isBusinessFlag: true,
-        },
+        data: txData,
         include: {
           category: true,
           aiCategory: true,
@@ -35,16 +65,34 @@ export class TransactionsService {
       });
       return result;
     } catch (err: any) {
-      // If relations don't exist, try without includes
-      if (err?.code === 'P2025' || err?.code === 'P2003' || err?.message?.includes('relation') || err?.message?.includes('Foreign key')) {
-        console.error('[TransactionsService.create] Failed with includes, retrying without:', err?.message);
+      console.error('[TransactionsService.create] Error:', err?.message || err);
+      
+      // If relations/columns don't exist, try minimal create
+      if (
+        err?.code === 'P2025' ||
+        err?.code === 'P2003' ||
+        err?.code === 'P2009' ||
+        err?.message?.includes('relation') ||
+        err?.message?.includes('Foreign key') ||
+        err?.message?.includes('does not exist') ||
+        err?.message?.includes('column')
+      ) {
+        console.warn('[TransactionsService.create] Retrying with minimal data...');
+        
+        // Strip potentially problematic fields
+        const minimalData = {
+          businessId,
+          type: data.type,
+          amount: data.amount,
+          date: new Date(data.date),
+          description: data.description || null,
+          source: data.source || 'manual',
+          currency: data.currency || 'NGN',
+          isBusinessFlag: true,
+        };
+        
         return this.prisma.transaction.create({
-          data: {
-            ...data,
-            businessId,
-            classification: 'business',
-            isBusinessFlag: true,
-          },
+          data: minimalData,
         });
       }
       throw err;
@@ -137,8 +185,18 @@ export class TransactionsService {
 
   async listCategories(businessId: string, userId: string) {
     await this.businessesService.findOne(businessId, userId);
-    return this.prisma.transactionCategory.findMany({
+    
+    const categories = await this.prisma.transactionCategory.findMany({
       orderBy: [{ displayOrder: 'asc' }, { name: 'asc' }],
+    });
+    
+    // Deduplicate by name+type (case insensitive)
+    const seen = new Set<string>();
+    return categories.filter((cat) => {
+      const key = `${cat.name.toLowerCase()}:${cat.type}`;
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
     });
   }
 

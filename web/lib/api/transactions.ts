@@ -10,9 +10,10 @@ export interface CreateTransactionInput {
   type: "income" | "expense";
   amount: number;
   description?: string;
-  category?: string;
+  categoryId?: string;  // UUID of the category
   date: string;
-  paymentMethod?: string;
+  source?: "manual" | "upload" | "import";
+  currency?: string;
 }
 
 export async function getTransactions(businessId: string, params?: {
@@ -34,7 +35,12 @@ export async function getTransactions(businessId: string, params?: {
 }
 
 export async function createTransaction(data: CreateTransactionInput): Promise<Transaction> {
-  return api.post(`/businesses/${data.businessId}/transactions`, data);
+  const { businessId, ...body } = data;
+  return api.post(`/businesses/${businessId}/transactions`, {
+    ...body,
+    source: body.source || "manual",
+    currency: body.currency || "NGN",
+  });
 }
 
 export async function updateTransaction(

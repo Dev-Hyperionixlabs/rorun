@@ -49,99 +49,123 @@ async function main() {
     });
   }
 
-  // Create default plans
-  const freePlan = await (prisma as any).plan.upsert({
-    where: { id: 'free' },
-    update: { planKey: 'free' },
-    create: {
+  // Create default plans with proper stable IDs
+  // Use raw SQL to check if planKey column exists and handle accordingly
+  const plans = [
+    {
       id: 'free',
       planKey: 'free',
       name: 'Free',
       description: 'Basic features for small businesses',
       monthlyPrice: 0,
-      isActive: true,
-      features: {
-        create: [
-          { featureKey: 'feature_basic_tracking', limitValue: 100 },
-        ],
-      },
+      annualPrice: null,
+      features: ['feature_basic_tracking'],
     },
-  });
-
-  const basicPlan = await (prisma as any).plan.upsert({
-    where: { id: 'basic' },
-    update: { planKey: 'basic' },
-    create: {
+    {
       id: 'basic',
       planKey: 'basic',
       name: 'Basic',
       description: 'Everything in Free, plus filing-ready packs.',
       monthlyPrice: 3500,
       annualPrice: 35000,
-      isActive: true,
-      features: {
-        create: [
-          { featureKey: 'yearEndFilingPack', limitValue: 1 },
-          { featureKey: 'exportTransactions', limitValue: 1 },
-          { featureKey: 'emailSupport', limitValue: 1 },
-        ],
-      },
+      features: ['yearEndFilingPack', 'exportTransactions', 'emailSupport'],
     },
-  });
-
-  const businessPlan = await (prisma as any).plan.upsert({
-    where: { id: 'business' },
-    update: { planKey: 'business' },
-    create: {
+    {
       id: 'business',
       planKey: 'business',
       name: 'Business',
       description: 'For SMEs that want to stay ahead of FIRS.',
       monthlyPrice: 8500,
       annualPrice: 85000,
-      isActive: true,
-      features: {
-        create: [
-          { featureKey: 'yearEndFilingPack', limitValue: 1 },
-          { featureKey: 'exportTransactions', limitValue: 1 },
-          { featureKey: 'emailSupport', limitValue: 1 },
-          { featureKey: 'advancedReminders', limitValue: 1 },
-          { featureKey: 'multiUserAccess', limitValue: 5 },
-          { featureKey: 'enhancedSummaryReports', limitValue: 1 },
-          { featureKey: 'bank_connect', limitValue: 1 },
-          { featureKey: 'bank_auto_sync', limitValue: 1 },
-        ],
-      },
+      features: ['yearEndFilingPack', 'exportTransactions', 'emailSupport', 'advancedReminders', 'multiUserAccess', 'enhancedSummaryReports', 'bank_connect', 'bank_auto_sync'],
     },
-  });
-
-  const accountantPlan = await (prisma as any).plan.upsert({
-    where: { id: 'accountant' },
-    update: { planKey: 'accountant' },
-    create: {
+    {
       id: 'accountant',
       planKey: 'accountant',
       name: 'Accountant',
       description: 'For firms managing multiple SME clients.',
       monthlyPrice: 25000,
       annualPrice: 250000,
-      isActive: true,
-      features: {
-        create: [
-          { featureKey: 'yearEndFilingPack', limitValue: 1 },
-          { featureKey: 'exportTransactions', limitValue: 1 },
-          { featureKey: 'emailSupport', limitValue: 1 },
-          { featureKey: 'advancedReminders', limitValue: 1 },
-          { featureKey: 'multiUserAccess', limitValue: 20 },
-          { featureKey: 'enhancedSummaryReports', limitValue: 1 },
-          { featureKey: 'multiWorkspaceView', limitValue: 1 },
-          { featureKey: 'prioritySupport', limitValue: 1 },
-          { featureKey: 'bank_connect', limitValue: 1 },
-          { featureKey: 'bank_auto_sync', limitValue: 1 },
-        ],
-      },
+      features: ['yearEndFilingPack', 'exportTransactions', 'emailSupport', 'advancedReminders', 'multiUserAccess', 'enhancedSummaryReports', 'multiWorkspaceView', 'prioritySupport', 'bank_connect', 'bank_auto_sync'],
     },
-  });
+  ];
+
+  // Check if planKey column exists
+  let hasPlanKeyColumn = true;
+  try {
+    const columnCheck: any[] = await prisma.$queryRaw`
+      SELECT 1 FROM information_schema.columns 
+      WHERE table_schema = 'public' AND table_name = 'plans' AND column_name = 'planKey'
+      LIMIT 1
+    `;
+    hasPlanKeyColumn = columnCheck.length > 0;
+  } catch (err) {
+    console.warn('Could not check planKey column - assuming it exists');
+  }
+
+  for (const plan of plans) {
+    try {
+      // First try to create/update the plan
+      const existingPlan = await prisma.plan.findFirst({ where: { id: plan.id } });
+      
+      if (existingPlan) {
+        // Update existing plan - only include planKey if column exists
+        if (hasPlanKeyColumn) {
+          await prisma.$executeRaw`
+            UPDATE plans SET "planKey" = ${plan.planKey}, name = ${plan.name}, description = ${plan.description}
+            WHERE id = ${plan.id}
+          `;
+        } else {
+          await prisma.plan.update({
+            where: { id: plan.id },
+            data: { name: plan.name, description: plan.description },
+          });
+        }
+      } else {
+        // Create new plan
+        if (hasPlanKeyColumn) {
+          await prisma.$executeRaw`
+            INSERT INTO plans (id, "planKey", name, description, "monthlyPrice", "annualPrice", "isActive", currency, "createdAt", "updatedAt")
+            VALUES (${plan.id}, ${plan.planKey}, ${plan.name}, ${plan.description}, ${plan.monthlyPrice}, ${plan.annualPrice}, true, 'NGN', NOW(), NOW())
+            ON CONFLICT (id) DO UPDATE SET "planKey" = ${plan.planKey}, name = ${plan.name}, description = ${plan.description}
+          `;
+        } else {
+          await prisma.plan.create({
+            data: {
+              id: plan.id,
+              name: plan.name,
+              description: plan.description,
+              monthlyPrice: plan.monthlyPrice,
+              annualPrice: plan.annualPrice,
+              isActive: true,
+            },
+          });
+        }
+      }
+
+      // Upsert features for this plan
+      for (const featureKey of plan.features) {
+        await prisma.planFeature.upsert({
+          where: {
+            planId_featureKey: {
+              planId: plan.id,
+              featureKey: featureKey,
+            },
+          },
+          update: {},
+          create: {
+            planId: plan.id,
+            featureKey: featureKey,
+            limitValue: featureKey === 'multiUserAccess' ? (plan.id === 'accountant' ? 20 : 5) : 1,
+          },
+        });
+      }
+
+      console.log(`Seeded plan: ${plan.id}`);
+    } catch (planErr: any) {
+      console.warn(`Warning: Could not fully seed plan ${plan.id}: ${planErr.message}`);
+    }
+  }
 
   // Create default tax rules for Nigeria
   const currentYear = new Date().getFullYear();
