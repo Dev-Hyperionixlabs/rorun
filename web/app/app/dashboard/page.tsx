@@ -16,6 +16,8 @@ import { getEligibilityResult, runEligibilityCheck } from "@/lib/api/eligibility
 import { useToast } from "@/components/ui/toast";
 import { AddTransactionModal } from "@/components/AddTransactionModal";
 import { canAccess } from "@/lib/entitlements";
+import { getNextDeadline, ComplianceTask } from "@/lib/api/compliance-tasks";
+import { Calendar } from "lucide-react";
 
 export default function DashboardPage() {
   return (
@@ -34,6 +36,7 @@ function DashboardContent() {
   const [taxProfile, setTaxProfile] = useState<any>(null);
   const [addTxOpen, setAddTxOpen] = useState(false);
   const [addTxType, setAddTxType] = useState<"income" | "expense">("income");
+  const [nextDeadline, setNextDeadline] = useState<ComplianceTask | null>(null);
 
   const businessId = currentBusinessId || businesses[0]?.id || null;
   const business = (businessId ? businesses.find((b) => b.id === businessId) : null) || businesses[0] || null;
@@ -60,6 +63,15 @@ function DashboardContent() {
       }
     })().catch(() => {});
   }, [businessId, year]);
+
+  // Load next deadline from server
+  useEffect(() => {
+    if (!businessId) return;
+    (async () => {
+      const deadline = await getNextDeadline(businessId);
+      setNextDeadline(deadline);
+    })().catch(() => setNextDeadline(null));
+  }, [businessId]);
 
   useEffect(() => {
     if (process.env.NODE_ENV === "production") return;
@@ -146,6 +158,32 @@ function DashboardContent() {
 
       {/* Tax Safety Hero */}
       <TaxSafetyCard />
+
+      {/* Next Deadline from Server */}
+      {nextDeadline && (
+        <Card className="bg-white border-l-4 border-l-amber-500">
+          <CardContent className="flex items-center gap-4 py-4">
+            <div className="rounded-full bg-amber-100 p-2">
+              <Calendar className="h-5 w-5 text-amber-700" />
+            </div>
+            <div className="flex-1">
+              <p className="text-xs text-slate-500 uppercase tracking-wide">Next deadline</p>
+              <p className="text-sm font-semibold text-slate-900">{nextDeadline.title}</p>
+              <p className="text-xs text-slate-600">
+                Due: {new Date(nextDeadline.dueDate).toLocaleDateString("en-GB", {
+                  weekday: "short",
+                  day: "numeric",
+                  month: "short",
+                  year: "numeric",
+                })}
+              </p>
+            </div>
+            <Link href={`/app/tasks/${nextDeadline.id}`}>
+              <Button size="sm" variant="secondary">View</Button>
+            </Link>
+          </CardContent>
+        </Card>
+      )}
 
       {businessId && (
         <Card className="bg-white">

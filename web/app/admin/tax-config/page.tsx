@@ -4,81 +4,102 @@ import { useEffect, useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Plus, Edit2, Save, X } from "lucide-react";
+import { Plus, Edit2, Save, X, AlertCircle, Info } from "lucide-react";
+import { ErrorState } from "@/components/ui/page-state";
+import { getAdminKey } from "@/lib/admin-key";
+
+const API_BASE = process.env.NEXT_PUBLIC_API_URL || "";
 
 interface TaxRule {
   id: string;
   taxType: string;
   year: number;
-  thresholdLower: number;
-  thresholdUpper: number | null;
-  ratePercentage: number;
-  description: string;
+  thresholdMin: number | null;
+  thresholdMax: number | null;
+  conditionExpression: string | null;
+  resultJson: {
+    rate?: number;
+    exempt?: boolean;
+    required?: boolean;
+    description?: string;
+  };
+  createdAt: string;
+  updatedAt: string;
 }
+
+const TAX_TYPE_OPTIONS = [
+  { value: "CIT", label: "CIT (Company Income Tax)", description: "Annual company income tax based on profits" },
+  { value: "VAT", label: "VAT (Value Added Tax)", description: "Tax on goods and services, typically 7.5%" },
+  { value: "WHT", label: "WHT (Withholding Tax)", description: "Tax deducted at source on certain payments" },
+  { value: "PAYE", label: "PAYE (Pay As You Earn)", description: "Employee income tax deducted from salaries" },
+  { value: "EDT", label: "EDT (Education Tax)", description: "2% education tax on assessable profits" },
+];
+
+const HELP_TEXT = {
+  thresholdMin: "Minimum annual turnover (₦) for this rule to apply. Leave empty for no minimum.",
+  thresholdMax: "Maximum annual turnover (₦). Leave empty for no upper limit (applies to all above minimum).",
+  rate: "Tax rate percentage (e.g., 7.5 for VAT, 20 for small company CIT).",
+  exempt: "Check if businesses in this threshold range are exempt from this tax.",
+  required: "Check if businesses must register for this tax type.",
+  conditionExpression: "Advanced: JSON expression for additional conditions (optional).",
+};
 
 export default function TaxConfigPage() {
   const [rules, setRules] = useState<TaxRule[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
-  const [editForm, setEditForm] = useState<Partial<TaxRule>>({});
+  const [editForm, setEditForm] = useState<any>({});
   const [creating, setCreating] = useState(false);
+  const [saving, setSaving] = useState(false);
 
-  const adminKey =
-    typeof window !== "undefined"
-      ? localStorage.getItem("rorun_admin_key") || ""
-      : "";
-  const apiUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001";
+  const fetchRules = async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const adminKey = getAdminKey();
+      if (!adminKey) {
+        setError("Admin key missing. Please log in.");
+        return;
+      }
+      const res = await fetch(`${API_BASE}/admin/tax-rules`, {
+        headers: { "x-admin-key": adminKey },
+      });
+      if (!res.ok) {
+        if (res.status === 401) {
+          setError("Unauthorized. Please check your admin key.");
+        } else {
+          const text = await res.text();
+          setError(text || `Failed to load rules (${res.status})`);
+        }
+        return;
+      }
+      const data = await res.json();
+      setRules(Array.isArray(data) ? data : []);
+    } catch (err: any) {
+      setError(err?.message || "Failed to connect to API");
+    } finally {
+      setLoading(false);
+    }
+  };
 
   useEffect(() => {
-    const fetchRules = async () => {
-      try {
-        const res = await fetch(`${apiUrl}/admin/tax-rules`, {
-          headers: { "x-admin-key": adminKey },
-        });
-        if (!res.ok) throw new Error("Failed to fetch");
-        const data = await res.json();
-        setRules(data || []);
-      } catch (err) {
-        // Mock fallback
-        setRules([
-          {
-            id: "rule-1",
-            taxType: "CIT",
-            year: 2025,
-            thresholdLower: 0,
-            thresholdUpper: 25000000,
-            ratePercentage: 0,
-            description: "Micro businesses exempt from CIT",
-          },
-          {
-            id: "rule-2",
-            taxType: "CIT",
-            year: 2025,
-            thresholdLower: 25000000,
-            thresholdUpper: 100000000,
-            ratePercentage: 20,
-            description: "Small companies 20% CIT rate",
-          },
-          {
-            id: "rule-3",
-            taxType: "VAT",
-            year: 2025,
-            thresholdLower: 25000000,
-            thresholdUpper: null,
-            ratePercentage: 7.5,
-            description: "VAT applies above ₦25m turnover",
-          },
-        ]);
-      } finally {
-        setLoading(false);
-      }
-    };
     fetchRules();
-  }, [adminKey, apiUrl]);
+  }, []);
 
   const startEdit = (rule: TaxRule) => {
     setEditingId(rule.id);
-    setEditForm({ ...rule });
+    setEditForm({
+      taxType: rule.taxType,
+      year: rule.year,
+      thresholdMin: rule.thresholdMin ?? "",
+      thresholdMax: rule.thresholdMax ?? "",
+      conditionExpression: rule.conditionExpression ?? "",
+      rate: rule.resultJson?.rate ?? "",
+      exempt: rule.resultJson?.exempt ?? false,
+      required: rule.resultJson?.required ?? true,
+      description: rule.resultJson?.description ?? "",
+    });
   };
 
   const cancelEdit = () => {
@@ -88,36 +109,50 @@ export default function TaxConfigPage() {
   };
 
   const saveRule = async () => {
+    setSaving(true);
     try {
+      const adminKey = getAdminKey();
+      const payload = {
+        taxType: editForm.taxType,
+        year: parseInt(editForm.year) || new Date().getFullYear(),
+        thresholdMin: editForm.thresholdMin !== "" ? parseFloat(editForm.thresholdMin) : null,
+        thresholdMax: editForm.thresholdMax !== "" ? parseFloat(editForm.thresholdMax) : null,
+        conditionExpression: editForm.conditionExpression || null,
+        resultJson: {
+          rate: editForm.rate !== "" ? parseFloat(editForm.rate) : undefined,
+          exempt: editForm.exempt,
+          required: editForm.required,
+          description: editForm.description || undefined,
+        },
+      };
+
       if (creating) {
-        const res = await fetch(`${apiUrl}/admin/tax-rules`, {
+        const res = await fetch(`${API_BASE}/admin/tax-rules`, {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
-            "x-admin-key": adminKey,
+            "x-admin-key": adminKey || "",
           },
-          body: JSON.stringify(editForm),
+          body: JSON.stringify(payload),
         });
-        const newRule = await res.json();
-        setRules([newRule, ...rules]);
+        if (!res.ok) throw new Error("Failed to create rule");
+        await fetchRules();
       } else if (editingId) {
-        await fetch(`${apiUrl}/admin/tax-rules/${editingId}`, {
+        const res = await fetch(`${API_BASE}/admin/tax-rules/${editingId}`, {
           method: "PUT",
           headers: {
             "Content-Type": "application/json",
-            "x-admin-key": adminKey,
+            "x-admin-key": adminKey || "",
           },
-          body: JSON.stringify(editForm),
+          body: JSON.stringify(payload),
         });
-        setRules(
-          rules.map((r) =>
-            r.id === editingId ? { ...r, ...editForm } : r
-          ) as TaxRule[]
-        );
+        if (!res.ok) throw new Error("Failed to update rule");
+        await fetchRules();
       }
-    } catch (err) {
-      console.error("Failed to save", err);
+    } catch (err: any) {
+      setError(err?.message || "Failed to save rule");
     } finally {
+      setSaving(false);
       cancelEdit();
     }
   };
@@ -128,24 +163,41 @@ export default function TaxConfigPage() {
     setEditForm({
       taxType: "CIT",
       year: new Date().getFullYear(),
-      thresholdLower: 0,
-      thresholdUpper: null,
-      ratePercentage: 0,
+      thresholdMin: "",
+      thresholdMax: "",
+      conditionExpression: "",
+      rate: "",
+      exempt: false,
+      required: true,
       description: "",
     });
   };
 
-  const formatCurrency = (val: number) =>
-    new Intl.NumberFormat("en-NG", {
+  const formatCurrency = (val: number | null) => {
+    if (val === null || val === undefined || isNaN(val)) return "—";
+    return new Intl.NumberFormat("en-NG", {
       style: "currency",
       currency: "NGN",
       maximumFractionDigits: 0,
     }).format(val);
+  };
 
   if (loading) {
     return (
       <div className="flex h-64 items-center justify-center">
         <div className="text-sm text-slate-500">Loading tax rules...</div>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="space-y-6">
+        <div>
+          <h1 className="text-xl font-semibold text-slate-900">Tax Rules</h1>
+          <p className="text-sm text-slate-500">Configure tax thresholds and eligibility.</p>
+        </div>
+        <ErrorState title="Couldn't load tax rules" message={error} onRetry={fetchRules} />
       </div>
     );
   }
@@ -156,7 +208,7 @@ export default function TaxConfigPage() {
         <div>
           <h1 className="text-xl font-semibold text-slate-900">Tax Rules</h1>
           <p className="text-sm text-slate-500">
-            Configure tax thresholds, rates, and eligibility rules.
+            Configure tax thresholds, rates, and eligibility rules for Nigerian SMEs.
           </p>
         </div>
         <Button onClick={startCreate} disabled={creating}>
@@ -165,6 +217,20 @@ export default function TaxConfigPage() {
         </Button>
       </div>
 
+      {/* Info banner */}
+      <div className="flex items-start gap-3 rounded-lg border border-blue-200 bg-blue-50 px-4 py-3">
+        <Info className="h-4 w-4 text-blue-600 mt-0.5 shrink-0" />
+        <div className="text-xs text-blue-800">
+          <p className="font-semibold">How tax rules work</p>
+          <p className="mt-1">
+            Rules define thresholds and rates for each tax type. When a business&apos;s annual turnover 
+            falls within a threshold range, the corresponding rate and eligibility apply. 
+            Changes here affect all businesses after their next eligibility check.
+          </p>
+        </div>
+      </div>
+
+      {/* Create form */}
       {creating && (
         <Card className="border-emerald-200 bg-emerald-50/50">
           <CardHeader>
@@ -172,77 +238,12 @@ export default function TaxConfigPage() {
               New Tax Rule
             </CardTitle>
           </CardHeader>
-          <CardContent className="space-y-3">
-            <div className="grid grid-cols-2 gap-3">
-              <select
-                className="rounded-xl border border-slate-300 px-3 py-2 text-sm"
-                value={editForm.taxType || "CIT"}
-                onChange={(e) =>
-                  setEditForm({ ...editForm, taxType: e.target.value })
-                }
-              >
-                <option value="CIT">CIT</option>
-                <option value="VAT">VAT</option>
-                <option value="WHT">WHT</option>
-                <option value="PAYE">PAYE</option>
-              </select>
-              <Input
-                type="number"
-                placeholder="Year"
-                value={editForm.year || ""}
-                onChange={(e) =>
-                  setEditForm({ ...editForm, year: parseInt(e.target.value) })
-                }
-              />
-            </div>
-            <div className="grid grid-cols-3 gap-3">
-              <Input
-                type="number"
-                placeholder="Lower threshold"
-                value={editForm.thresholdLower || ""}
-                onChange={(e) =>
-                  setEditForm({
-                    ...editForm,
-                    thresholdLower: parseFloat(e.target.value),
-                  })
-                }
-              />
-              <Input
-                type="number"
-                placeholder="Upper threshold (optional)"
-                value={editForm.thresholdUpper || ""}
-                onChange={(e) =>
-                  setEditForm({
-                    ...editForm,
-                    thresholdUpper: e.target.value
-                      ? parseFloat(e.target.value)
-                      : null,
-                  })
-                }
-              />
-              <Input
-                type="number"
-                placeholder="Rate %"
-                value={editForm.ratePercentage || ""}
-                onChange={(e) =>
-                  setEditForm({
-                    ...editForm,
-                    ratePercentage: parseFloat(e.target.value),
-                  })
-                }
-              />
-            </div>
-            <Input
-              placeholder="Description"
-              value={editForm.description || ""}
-              onChange={(e) =>
-                setEditForm({ ...editForm, description: e.target.value })
-              }
-            />
+          <CardContent className="space-y-4">
+            <RuleForm editForm={editForm} setEditForm={setEditForm} />
             <div className="flex gap-2">
-              <Button size="sm" onClick={saveRule}>
+              <Button size="sm" onClick={saveRule} disabled={saving}>
                 <Save className="mr-1.5 h-4 w-4" />
-                Save
+                {saving ? "Saving..." : "Save Rule"}
               </Button>
               <Button size="sm" variant="ghost" onClick={cancelEdit}>
                 <X className="mr-1.5 h-4 w-4" />
@@ -253,122 +254,202 @@ export default function TaxConfigPage() {
         </Card>
       )}
 
-      <div className="space-y-3">
-        {rules.map((rule) => (
-          <Card key={rule.id}>
-            <CardContent className="py-4">
-              {editingId === rule.id ? (
-                <div className="space-y-3">
-                  <div className="grid grid-cols-2 gap-3">
-                    <select
-                      className="rounded-xl border border-slate-300 px-3 py-2 text-sm"
-                      value={editForm.taxType || ""}
-                      onChange={(e) =>
-                        setEditForm({ ...editForm, taxType: e.target.value })
-                      }
-                    >
-                      <option value="CIT">CIT</option>
-                      <option value="VAT">VAT</option>
-                      <option value="WHT">WHT</option>
-                      <option value="PAYE">PAYE</option>
-                    </select>
-                    <Input
-                      type="number"
-                      value={editForm.year || ""}
-                      onChange={(e) =>
-                        setEditForm({
-                          ...editForm,
-                          year: parseInt(e.target.value),
-                        })
-                      }
-                    />
-                  </div>
-                  <div className="grid grid-cols-3 gap-3">
-                    <Input
-                      type="number"
-                      value={editForm.thresholdLower || ""}
-                      onChange={(e) =>
-                        setEditForm({
-                          ...editForm,
-                          thresholdLower: parseFloat(e.target.value),
-                        })
-                      }
-                    />
-                    <Input
-                      type="number"
-                      value={editForm.thresholdUpper || ""}
-                      onChange={(e) =>
-                        setEditForm({
-                          ...editForm,
-                          thresholdUpper: e.target.value
-                            ? parseFloat(e.target.value)
-                            : null,
-                        })
-                      }
-                    />
-                    <Input
-                      type="number"
-                      value={editForm.ratePercentage || ""}
-                      onChange={(e) =>
-                        setEditForm({
-                          ...editForm,
-                          ratePercentage: parseFloat(e.target.value),
-                        })
-                      }
-                    />
-                  </div>
-                  <Input
-                    value={editForm.description || ""}
-                    onChange={(e) =>
-                      setEditForm({ ...editForm, description: e.target.value })
-                    }
-                  />
-                  <div className="flex gap-2">
-                    <Button size="sm" onClick={saveRule}>
-                      <Save className="mr-1.5 h-4 w-4" />
-                      Save
-                    </Button>
-                    <Button size="sm" variant="ghost" onClick={cancelEdit}>
-                      <X className="mr-1.5 h-4 w-4" />
-                      Cancel
-                    </Button>
-                  </div>
-                </div>
-              ) : (
-                <div className="flex items-start justify-between">
-                  <div>
-                    <div className="flex items-center gap-2">
-                      <span className="rounded-full bg-slate-900 px-2 py-0.5 text-[10px] font-semibold text-white">
-                        {rule.taxType}
-                      </span>
-                      <span className="text-xs text-slate-500">
-                        {rule.year}
-                      </span>
+      {/* Rules list */}
+      {rules.length === 0 ? (
+        <Card>
+          <CardContent className="py-8 text-center">
+            <AlertCircle className="h-8 w-8 text-slate-300 mx-auto mb-2" />
+            <p className="text-sm text-slate-500">No tax rules configured yet.</p>
+            <p className="text-xs text-slate-400 mt-1">Click &quot;New Rule&quot; to add your first tax rule.</p>
+          </CardContent>
+        </Card>
+      ) : (
+        <div className="space-y-3">
+          {rules.map((rule) => (
+            <Card key={rule.id}>
+              <CardContent className="py-4">
+                {editingId === rule.id ? (
+                  <div className="space-y-4">
+                    <RuleForm editForm={editForm} setEditForm={setEditForm} />
+                    <div className="flex gap-2">
+                      <Button size="sm" onClick={saveRule} disabled={saving}>
+                        <Save className="mr-1.5 h-4 w-4" />
+                        {saving ? "Saving..." : "Save"}
+                      </Button>
+                      <Button size="sm" variant="ghost" onClick={cancelEdit}>
+                        <X className="mr-1.5 h-4 w-4" />
+                        Cancel
+                      </Button>
                     </div>
-                    <p className="mt-1 text-sm font-medium text-slate-900">
-                      {rule.description}
-                    </p>
-                    <p className="mt-1 text-xs text-slate-500">
-                      {formatCurrency(rule.thresholdLower)}
-                      {rule.thresholdUpper
-                        ? ` – ${formatCurrency(rule.thresholdUpper)}`
-                        : "+"}{" "}
-                      @ {rule.ratePercentage}%
-                    </p>
                   </div>
-                  <button
-                    onClick={() => startEdit(rule)}
-                    className="rounded-lg p-2 text-slate-400 hover:bg-slate-100 hover:text-slate-600"
-                  >
-                    <Edit2 className="h-4 w-4" />
-                  </button>
-                </div>
-              )}
-            </CardContent>
-          </Card>
-        ))}
-      </div>
+                ) : (
+                  <div className="flex items-start justify-between">
+                    <div className="space-y-1">
+                      <div className="flex items-center gap-2">
+                        <span className="rounded-full bg-slate-900 px-2 py-0.5 text-[10px] font-semibold text-white">
+                          {rule.taxType}
+                        </span>
+                        <span className="text-xs text-slate-500">
+                          {rule.year}
+                        </span>
+                        {rule.resultJson?.exempt && (
+                          <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-medium text-emerald-700">
+                            Exempt
+                          </span>
+                        )}
+                      </div>
+                      <p className="text-sm font-medium text-slate-900">
+                        {rule.resultJson?.description || `${rule.taxType} rule for ${rule.year}`}
+                      </p>
+                      <div className="flex gap-4 text-xs text-slate-500">
+                        <span>
+                          Turnover: {formatCurrency(rule.thresholdMin)}
+                          {rule.thresholdMax ? ` – ${formatCurrency(rule.thresholdMax)}` : "+"}
+                        </span>
+                        {rule.resultJson?.rate !== undefined && (
+                          <span>Rate: {rule.resultJson.rate}%</span>
+                        )}
+                      </div>
+                      <p className="text-[10px] text-slate-400">
+                        Updated: {new Date(rule.updatedAt).toLocaleDateString()}
+                      </p>
+                    </div>
+                    <button
+                      onClick={() => startEdit(rule)}
+                      className="rounded-lg p-2 text-slate-400 hover:bg-slate-100 hover:text-slate-600"
+                    >
+                      <Edit2 className="h-4 w-4" />
+                    </button>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
 
+function RuleForm({
+  editForm,
+  setEditForm,
+}: {
+  editForm: any;
+  setEditForm: (v: any) => void;
+}) {
+  return (
+    <div className="space-y-4">
+      {/* Tax Type & Year */}
+      <div className="grid grid-cols-2 gap-3">
+        <div className="space-y-1">
+          <label className="text-xs font-medium text-slate-700">Tax Type</label>
+          <select
+            className="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm"
+            value={editForm.taxType || "CIT"}
+            onChange={(e) => setEditForm({ ...editForm, taxType: e.target.value })}
+          >
+            {TAX_TYPE_OPTIONS.map((opt) => (
+              <option key={opt.value} value={opt.value}>
+                {opt.label}
+              </option>
+            ))}
+          </select>
+          <p className="text-[10px] text-slate-400">
+            {TAX_TYPE_OPTIONS.find((o) => o.value === editForm.taxType)?.description}
+          </p>
+        </div>
+        <div className="space-y-1">
+          <label className="text-xs font-medium text-slate-700">Tax Year</label>
+          <Input
+            type="number"
+            placeholder="e.g. 2025"
+            value={editForm.year || ""}
+            onChange={(e) => setEditForm({ ...editForm, year: e.target.value })}
+          />
+          <p className="text-[10px] text-slate-400">Year this rule applies to</p>
+        </div>
+      </div>
+
+      {/* Thresholds */}
+      <div className="grid grid-cols-2 gap-3">
+        <div className="space-y-1">
+          <label className="text-xs font-medium text-slate-700">Minimum Turnover (₦)</label>
+          <Input
+            type="number"
+            placeholder="e.g. 0 or 25000000"
+            value={editForm.thresholdMin || ""}
+            onChange={(e) => setEditForm({ ...editForm, thresholdMin: e.target.value })}
+          />
+          <p className="text-[10px] text-slate-400">{HELP_TEXT.thresholdMin}</p>
+        </div>
+        <div className="space-y-1">
+          <label className="text-xs font-medium text-slate-700">Maximum Turnover (₦)</label>
+          <Input
+            type="number"
+            placeholder="Leave empty for no limit"
+            value={editForm.thresholdMax || ""}
+            onChange={(e) => setEditForm({ ...editForm, thresholdMax: e.target.value })}
+          />
+          <p className="text-[10px] text-slate-400">{HELP_TEXT.thresholdMax}</p>
+        </div>
+      </div>
+
+      {/* Rate & Flags */}
+      <div className="grid grid-cols-3 gap-3">
+        <div className="space-y-1">
+          <label className="text-xs font-medium text-slate-700">Rate (%)</label>
+          <Input
+            type="number"
+            step="0.1"
+            placeholder="e.g. 7.5"
+            value={editForm.rate || ""}
+            onChange={(e) => setEditForm({ ...editForm, rate: e.target.value })}
+          />
+          <p className="text-[10px] text-slate-400">{HELP_TEXT.rate}</p>
+        </div>
+        <div className="space-y-1">
+          <label className="text-xs font-medium text-slate-700">Exempt?</label>
+          <div className="flex items-center gap-2 mt-2">
+            <input
+              type="checkbox"
+              id="exempt"
+              checked={editForm.exempt || false}
+              onChange={(e) => setEditForm({ ...editForm, exempt: e.target.checked })}
+              className="rounded border-slate-300"
+            />
+            <label htmlFor="exempt" className="text-xs text-slate-600">
+              Businesses are exempt
+            </label>
+          </div>
+        </div>
+        <div className="space-y-1">
+          <label className="text-xs font-medium text-slate-700">Required?</label>
+          <div className="flex items-center gap-2 mt-2">
+            <input
+              type="checkbox"
+              id="required"
+              checked={editForm.required ?? true}
+              onChange={(e) => setEditForm({ ...editForm, required: e.target.checked })}
+              className="rounded border-slate-300"
+            />
+            <label htmlFor="required" className="text-xs text-slate-600">
+              Registration required
+            </label>
+          </div>
+        </div>
+      </div>
+
+      {/* Description */}
+      <div className="space-y-1">
+        <label className="text-xs font-medium text-slate-700">Description</label>
+        <Input
+          placeholder="e.g. Micro businesses exempt from CIT"
+          value={editForm.description || ""}
+          onChange={(e) => setEditForm({ ...editForm, description: e.target.value })}
+        />
+        <p className="text-[10px] text-slate-400">Human-readable explanation shown to users</p>
+      </div>
+    </div>
+  );
+}
