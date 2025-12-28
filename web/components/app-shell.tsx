@@ -3,7 +3,7 @@
 import Link from "next/link";
 import Image from "next/image";
 import { usePathname } from "next/navigation";
-import { Bell, Menu } from "lucide-react";
+import { Bell, Menu, LogOut } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { useMockApi } from "@/lib/mock-api";
 import { Button } from "./ui/button";
@@ -12,6 +12,7 @@ import { hardResetSession } from "@/lib/session";
 import { BrandLink } from "./BrandLink";
 import { logout } from "@/lib/api/auth";
 import { isImpersonating, setImpersonatingFlag } from "@/lib/admin-key";
+import { useToast } from "./ui/toast";
 
 const navItems = [
   { href: "/app/dashboard", label: "Dashboard" },
@@ -27,10 +28,30 @@ const navItems = [
 export function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const { user, businesses, alerts, loading, error, refresh } = useMockApi();
+  const { addToast } = useToast();
   const [navOpen, setNavOpen] = useState(false);
   const [showAlerts, setShowAlerts] = useState(false);
   const [showProfileMenu, setShowProfileMenu] = useState(false);
   const [impersonating, setImpersonating] = useState(false);
+  const [loggingOut, setLoggingOut] = useState(false);
+
+  const handleLogout = async () => {
+    setLoggingOut(true);
+    setShowProfileMenu(false);
+    setNavOpen(false);
+    try {
+      await logout();
+    } catch {
+      // ignore; we'll still clear local session
+    } finally {
+      hardResetSession();
+      addToast({ title: "Logged out", description: "You've been signed out successfully." });
+      // Small delay to show the toast
+      setTimeout(() => {
+        window.location.href = "/login";
+      }, 500);
+    }
+  };
 
   // Hooks must be called before any early returns
   const sortedAlerts = useMemo(
@@ -192,13 +213,13 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                 type="button"
                 aria-label="Open profile menu"
                 data-profile-button="true"
-                className="flex items-center gap-2 rounded-full bg-slate-100 px-3 py-1.5 text-xs hover:bg-slate-200"
+                className="flex items-center gap-2 rounded-full bg-slate-100 px-3 py-2 text-xs hover:bg-slate-200 min-h-[40px] cursor-pointer"
                 onClick={() => setShowProfileMenu((v) => !v)}
               >
-                <span className="h-6 w-6 rounded-full bg-brand/10 text-[11px] font-semibold text-brand flex items-center justify-center">
-                  {(user.name || user.email || "U").charAt(0)}
+                <span className="h-7 w-7 rounded-full bg-brand/10 text-xs font-semibold text-brand flex items-center justify-center">
+                  {(user.name || user.email || "U").charAt(0).toUpperCase()}
                 </span>
-                <span className="truncate max-w-[120px]">{user.name || user.email || "Account"}</span>
+                <span className="truncate max-w-[120px] font-medium">{user.name || user.email || "Account"}</span>
               </button>
 
               {showProfileMenu && (
@@ -219,20 +240,12 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                   </Link>
                   <button
                     type="button"
-                    className="w-full text-left px-4 py-3 text-sm text-rose-700 hover:bg-rose-50"
-                    onClick={async () => {
-                      setShowProfileMenu(false);
-                      try {
-                        await logout();
-                      } catch {
-                        // ignore; we'll still clear local session
-                      } finally {
-                        hardResetSession();
-                        window.location.href = "/login";
-                      }
-                    }}
+                    className="w-full text-left px-4 py-3 text-sm text-rose-700 hover:bg-rose-50 flex items-center gap-2"
+                    onClick={handleLogout}
+                    disabled={loggingOut}
                   >
-                    Log out
+                    <LogOut className="h-4 w-4" />
+                    {loggingOut ? "Logging out…" : "Log out"}
                   </button>
                 </div>
               )}
@@ -265,6 +278,16 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                 </Link>
               );
             })}
+            {/* Mobile-only logout */}
+            <button
+              type="button"
+              className="mt-4 w-full flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium text-rose-700 hover:bg-rose-50 md:hidden"
+              onClick={handleLogout}
+              disabled={loggingOut}
+            >
+              <LogOut className="h-4 w-4" />
+              {loggingOut ? "Logging out…" : "Log out"}
+            </button>
             <div className="mt-4 rounded-lg bg-emerald-50 px-3 py-2 text-xs text-emerald-800">
               <div className="font-semibold">Tax Safety tip</div>
               <p className="mt-1">

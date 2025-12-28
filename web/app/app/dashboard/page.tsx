@@ -8,7 +8,6 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { TaxSafetyCard } from "@/components/tax-safety-card";
 import { RecommendedActionsSection } from "@/components/recommended-actions";
-import { ComplianceTasksCard } from "@/components/compliance-tasks-card";
 import { useFilingPack } from "@/hooks/use-filing-pack";
 import { getReviewIssues } from "@/lib/api/review";
 import Link from "next/link";
@@ -168,10 +167,7 @@ function DashboardContent() {
         </Card>
       )}
 
-      {/* Next Actions - Compliance Tasks */}
-      {businessId && <ComplianceTasksCard businessId={businessId} />}
-
-      {/* Top 3 Recommended Actions */}
+      {/* Combined Recommended Actions - single source of truth */}
       <RecommendedActionsSection />
 
       <div className="grid gap-4 md:grid-cols-3">

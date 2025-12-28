@@ -14,7 +14,9 @@ import clsx from "clsx";
 import { getCurrentPlan, setCurrentPlanApi } from "@/lib/api/plan";
 import { updateProfileApi } from "@/lib/api/profile";
 import { updateBusinessApi } from "@/lib/api/business";
-import { logoutToHome } from "@/lib/session";
+import { hardResetSession } from "@/lib/session";
+import { logout } from "@/lib/api/auth";
+import { useToast } from "@/components/ui/toast";
 import {
   getNotificationPreferences,
   updateNotificationPreference,
@@ -282,10 +284,12 @@ function PlanSettingsSection() {
 
 function ProfileSettingsSection() {
   const { user, updateUser } = useMockApi();
+  const { addToast } = useToast();
   const [name, setName] = useState(user?.name || "");
   const [email, setEmail] = useState(user?.email || "");
   const [language, setLanguage] = useState(user?.preferredLanguage);
   const [saving, setSaving] = useState(false);
+  const [loggingOut, setLoggingOut] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   if (!user) {
@@ -305,6 +309,21 @@ function ProfileSettingsSection() {
     updateProfileApi({ name, email: email || undefined, preferredLanguage: language })
       .catch((e) => setError(e?.message || "Failed to save profile"))
       .finally(() => setSaving(false));
+  };
+
+  const handleLogout = async () => {
+    setLoggingOut(true);
+    try {
+      await logout();
+    } catch {
+      // ignore
+    } finally {
+      hardResetSession();
+      addToast({ title: "Logged out", description: "You've been signed out successfully." });
+      setTimeout(() => {
+        window.location.href = "/login";
+      }, 500);
+    }
   };
 
   return (
@@ -338,9 +357,9 @@ function ProfileSettingsSection() {
         </Button>
         {error && <p className="text-xs font-semibold text-rose-600">{error}</p>}
 
-        <div className="pt-2 border-t border-slate-100">
-          <Button variant="secondary" onClick={() => logoutToHome()}>
-            Log out
+        <div className="pt-4 border-t border-slate-100">
+          <Button variant="secondary" onClick={handleLogout} disabled={loggingOut}>
+            {loggingOut ? "Logging out…" : "Log out"}
           </Button>
         </div>
       </CardContent>
