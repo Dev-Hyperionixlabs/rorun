@@ -7,17 +7,19 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { setAdminKey, getAdminKey } from "@/lib/admin-key";
 import { verifyAdminKey } from "@/lib/api/admin";
-import { ErrorState } from "@/components/ui/page-state";
 
 export function AdminLoginCard({ reason }: { reason: string | null }) {
   const router = useRouter();
-  const [key, setKey] = useState("");
+  const [mounted, setMounted] = useState(false);
+  const [key, setKeyValue] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  // Only access localStorage after mount to avoid hydration mismatch
   useEffect(() => {
+    setMounted(true);
     const existing = getAdminKey();
-    if (existing) setKey(existing);
+    if (existing) setKeyValue(existing);
   }, []);
 
   const handleLogin = async () => {
@@ -39,6 +41,19 @@ export function AdminLoginCard({ reason }: { reason: string | null }) {
       ? "Your admin key is missing or invalid. Please sign in."
       : null;
 
+  // Don't render form until mounted to avoid hydration mismatch
+  if (!mounted) {
+    return (
+      <div className="mx-auto max-w-md py-10">
+        <Card className="bg-white">
+          <CardContent className="py-8 text-center text-sm text-slate-500">
+            Loading…
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
+
   return (
     <div className="mx-auto max-w-md py-10">
       <Card className="bg-white">
@@ -55,11 +70,15 @@ export function AdminLoginCard({ reason }: { reason: string | null }) {
             <label className="text-sm font-medium text-slate-800">Admin key</label>
             <Input
               value={key}
-              onChange={(e) => setKey(e.target.value)}
+              onChange={(e) => setKeyValue(e.target.value)}
               placeholder="Enter admin key…"
             />
           </div>
-          {error && <ErrorState title="Login failed" message={error} />}
+          {error && (
+            <div className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-900">
+              {error}
+            </div>
+          )}
           <Button
             className="rounded-full bg-emerald-600 text-sm font-semibold hover:bg-emerald-700"
             onClick={handleLogin}

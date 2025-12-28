@@ -4,7 +4,7 @@ import Link from "next/link";
 import Image from "next/image";
 import { usePathname } from "next/navigation";
 import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import {
   LayoutDashboard,
   Building2,
@@ -32,14 +32,31 @@ export default function AdminLayout({
   const pathname = usePathname();
   const router = useRouter();
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [authChecked, setAuthChecked] = useState(false);
+  const [hasKey, setHasKey] = useState(false);
 
-  // Redirect to /admin/login if key is missing (except on login page)
-  if (typeof window !== "undefined") {
+  // Check admin key after mount to avoid hydration mismatch
+  useEffect(() => {
     const key = getAdminKey();
+    setHasKey(!!key);
+    setAuthChecked(true);
     if (!key && pathname !== "/admin/login") {
       router.replace("/admin/login?reason=unauthorized");
-      return null;
     }
+  }, [pathname, router]);
+
+  // Show loading state until auth check is complete
+  if (!authChecked) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-slate-100">
+        <p className="text-sm text-slate-500">Loading admin…</p>
+      </div>
+    );
+  }
+
+  // If no key and not on login page, don't render (redirect is in progress)
+  if (!hasKey && pathname !== "/admin/login") {
+    return null;
   }
 
   return (
