@@ -343,8 +343,6 @@ export const MockApiProvider: React.FC<{ children: React.ReactNode }> = ({ child
           ...s,
           transactions: [created as Transaction, ...s.transactions],
         }));
-        // Trigger a refresh to update dashboard totals
-        setTimeout(() => refresh(), 500);
         return created as Transaction;
       },
       async deleteTransaction(id) {
