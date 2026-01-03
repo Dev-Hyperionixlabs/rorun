@@ -16,6 +16,8 @@ class TestableRecommendedActionsService extends RecommendedActionsService {
       undefined as any,
       // filingPacksService
       undefined as any,
+      // plansService
+      undefined as any,
     );
   }
 

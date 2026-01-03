@@ -6,9 +6,10 @@ import { BusinessesModule } from '../businesses/businesses.module';
 import { TaxSafetyModule } from '../tax-safety/tax-safety.module';
 import { SubscriptionsModule } from '../subscriptions/subscriptions.module';
 import { FilingPacksModule } from '../filing-packs/filing-packs.module';
+import { PlansModule } from '../plans/plans.module';
 
 @Module({
-  imports: [PrismaModule, BusinessesModule, TaxSafetyModule, SubscriptionsModule, FilingPacksModule],
+  imports: [PrismaModule, BusinessesModule, TaxSafetyModule, SubscriptionsModule, FilingPacksModule, PlansModule],
   providers: [RecommendedActionsService],
   controllers: [RecommendedActionsController],
 })

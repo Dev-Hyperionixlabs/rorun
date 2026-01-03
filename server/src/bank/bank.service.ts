@@ -398,9 +398,11 @@ export class BankService {
             )
           : [];
 
-      // Check if this is first sync or large import
+      // NOTE: Review workflow requires UI. Until that UI exists, import directly end-to-end.
+      // You can re-enable by setting BANK_IMPORT_REVIEW=true.
+      const reviewEnabled = process.env.BANK_IMPORT_REVIEW === 'true';
       const isFirstSync = !connection.lastSyncedAt;
-      const requiresReview = isFirstSync || transactions.length > 50;
+      const requiresReview = reviewEnabled && (isFirstSync || transactions.length > 50);
 
       // Import transactions (with review workflow if needed)
       const result = await this.importTransactions(
