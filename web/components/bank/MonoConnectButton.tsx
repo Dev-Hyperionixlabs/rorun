@@ -5,13 +5,11 @@ import { Button } from "@/components/ui/button";
 import { api } from "@/lib/api/bank";
 import { useToast } from "@/components/ui/toast";
 import { Loader2, Link2 } from "lucide-react";
-import { getGeo } from "@/lib/api/geo";
 
 interface MonoConnectButtonProps {
   businessId: string;
   onSuccess?: () => void;
   onError?: (error: string) => void;
-  disabled?: boolean;
 }
 
 declare global {
@@ -24,7 +22,6 @@ export function MonoConnectButton({
   businessId,
   onSuccess,
   onError,
-  disabled,
 }: MonoConnectButtonProps) {
   const [loading, setLoading] = useState(false);
   const [connecting, setConnecting] = useState(false);
@@ -37,30 +34,7 @@ export function MonoConnectButton({
 
   const handleConnectClick = async () => {
     try {
-      if (disabled) return;
       setLoading(true);
-
-      // Region handling (best-effort). We do NOT advise bypassing restrictions.
-      let countryCode: string | undefined;
-      try {
-        const geo = await getGeo();
-        countryCode = geo.countryCode || undefined;
-        if (geo.countryCode && geo.countryCode !== "NG") {
-          const msg =
-            "Bank connection is currently supported only for Nigerian access. Please upload a bank statement instead.";
-          await api.logConnectAttempt(businessId, {
-            provider: "mono",
-            success: false,
-            reason: "GEO_BLOCK",
-            countryCode: geo.countryCode,
-          }).catch(() => {});
-          addToast({ title: "Bank connection unavailable", description: msg, variant: "error" });
-          onError?.(msg);
-          return;
-        }
-      } catch {
-        // If geo can't be detected, proceed (SDK may still fail and we'll handle it).
-      }
 
       // Get Mono config from server (includes consent text)
       const config = await api.initMono(businessId);
@@ -206,7 +180,7 @@ export function MonoConnectButton({
     <>
       <Button
         onClick={handleConnectClick}
-        disabled={disabled || loading || connecting}
+        disabled={loading || connecting}
         className="rounded-full bg-emerald-600 text-sm font-semibold hover:bg-emerald-700"
       >
         {loading || connecting ? (

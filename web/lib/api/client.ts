@@ -66,22 +66,39 @@ export async function apiRequest<T = any>(
     }
   }
 
-  const url = `${API_URL}${endpoint}`;
+  const normalizeBase = (base: string) => base.replace(/\/+$/, "");
+  const base = normalizeBase(API_URL);
+  const endpointNorm = endpoint.startsWith("/") ? endpoint : `/${endpoint}`;
+
+  const primaryUrl = `${base}${endpointNorm}`;
+  const altUrl =
+    base.endsWith("/api") || base.includes("/api/")
+      ? `${base.replace(/\/api$/, "")}${endpointNorm}`
+      : `${base}/api${endpointNorm}`;
 
   try {
     const debug = process.env.NEXT_PUBLIC_API_DEBUG === "true";
     if (debug) {
       // eslint-disable-next-line no-console
-      console.debug("[API]", fetchOptions.method || "GET", url);
+      console.debug("[API]", fetchOptions.method || "GET", primaryUrl);
     }
 
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), timeoutMs);
-    const res = await fetch(url, {
-      ...fetchOptions,
-      headers,
-      signal: controller.signal,
-    }).finally(() => clearTimeout(timeout));
+    const doFetch = async (url: string) => {
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), timeoutMs);
+      return fetch(url, {
+        ...fetchOptions,
+        headers,
+        signal: controller.signal,
+      }).finally(() => clearTimeout(timeout));
+    };
+
+    let res = await doFetch(primaryUrl);
+
+    // If a proxy expects /api prefix (or the opposite), retry once on 404.
+    if (res.status === 404 && altUrl !== primaryUrl) {
+      res = await doFetch(altUrl);
+    }
 
     // Handle 401 - redirect to login
     if (res.status === 401) {
@@ -99,6 +116,8 @@ export async function apiRequest<T = any>(
       }
       throw new ApiError(401, "Session expired. Please log in again.");
     }
+
+    const url = res.url || primaryUrl;
 
     // Handle error responses
     if (!res.ok) {
@@ -130,7 +149,7 @@ export async function apiRequest<T = any>(
     const debug = process.env.NEXT_PUBLIC_API_DEBUG === "true";
     if (debug) {
       // eslint-disable-next-line no-console
-      console.debug("[API] network failure", { url, error });
+      console.debug("[API] network failure", { url: primaryUrl, error });
     }
 
     if ((error as any)?.name === "AbortError") {

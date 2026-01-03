@@ -19,6 +19,22 @@ async function bootstrap() {
   // Stable request id for every request/response
   app.use(requestIdMiddleware);
 
+  /**
+   * Compatibility: accept both `/...` and `/api/...` paths.
+   * Some deployments/proxies route the service under `/api` even when Nest isn't using a global prefix.
+   * This keeps old clients working and prevents production 404s caused by a missing prefix.
+   */
+  app.use((req: any, _res: any, next: any) => {
+    try {
+      if (typeof req.url === 'string' && (req.url === '/api' || req.url.startsWith('/api/'))) {
+        req.url = req.url === '/api' ? '/' : req.url.slice('/api'.length);
+      }
+    } catch {
+      // ignore
+    }
+    next();
+  });
+
   // Capture raw request body for webhook signature verification (e.g. Paystack)
   app.use(
     json({
