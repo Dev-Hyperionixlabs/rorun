@@ -24,7 +24,6 @@ export class SubscriptionsService {
     try {
       return await this.prisma.subscription.findFirst({
         where: {
-          userId,
           businessId,
           status: 'active',
           OR: [{ endsAt: null }, { endsAt: { gte: new Date() } }],
@@ -95,7 +94,7 @@ export class SubscriptionsService {
 
       // Deactivate current active subscriptions
       await this.prisma.subscription.updateMany({
-        where: { userId, businessId, status: 'active' },
+        where: { businessId, status: 'active' },
         data: { status: 'ended', endsAt: now },
       }).catch(() => {
         // Ignore if no active subscriptions exist

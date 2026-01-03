@@ -104,7 +104,7 @@ export async function getCurrentUser() {
     phone: u.phone,
     email: u.email || "",
     name: u.name || "",
-    currentBusinessId: null,
+    currentBusinessId: u.currentBusinessId || null,
     preferredLanguage: (u.languagePref === "pidgin" ? "pidgin" : "en") as
       | "en"
       | "pidgin",

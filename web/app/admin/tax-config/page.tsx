@@ -55,7 +55,7 @@ export default function TaxConfigPage() {
     type: "eligibility" as AdminTaxRuleV2["type"],
     priority: 10,
     conditionsJson: "{\n  \"all\": []\n}",
-    outcomeJson: "{\n  \"set\": {}\n}",
+    outcomeJson: "{\n  \"citStatus\": \"unknown\"\n}",
     explanation: "",
   });
 

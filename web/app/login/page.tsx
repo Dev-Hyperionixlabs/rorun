@@ -2,6 +2,7 @@ import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { PublicShell } from "@/components/public/PublicShell";
 import { LoginFormCard } from "./login-form-card";
+import { PublicFeedbackButton } from "@/components/public/PublicFeedbackButton";
 
 export default function LoginPage({
   searchParams,
@@ -14,6 +15,7 @@ export default function LoginPage({
     <PublicShell
       rightNav={
         <nav className="flex items-center gap-3 text-xs">
+          <PublicFeedbackButton />
           <Link href="/signup">
             <Button size="sm">Start free</Button>
           </Link>

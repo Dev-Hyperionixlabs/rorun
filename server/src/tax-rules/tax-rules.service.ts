@@ -374,6 +374,23 @@ export class TaxRulesService {
       return;
     }
 
+    // Backward-compatible aliases (older UI used { all: [] } / { any: [] })
+    if (condition.all) {
+      if (!Array.isArray(condition.all)) {
+        throw new BadRequestException('all must be an array');
+      }
+      condition.all.forEach((c: any) => this.validateCondition(c));
+      return;
+    }
+
+    if (condition.any) {
+      if (!Array.isArray(condition.any)) {
+        throw new BadRequestException('any must be an array');
+      }
+      condition.any.forEach((c: any) => this.validateCondition(c));
+      return;
+    }
+
     // Validate field-based condition
     if (!condition.field || !condition.op) {
       throw new BadRequestException('Condition must have field and op');

@@ -11,9 +11,10 @@ import { TaxSafetyBadge } from "./tax-safety-badge";
 import { hardResetSession } from "@/lib/session";
 import { BrandLink } from "./BrandLink";
 import { logout } from "@/lib/api/auth";
-import { isImpersonating, setImpersonatingFlag } from "@/lib/admin-key";
+import { isImpersonating, setImpersonatingFlag, consumeAdminSessionBackup } from "@/lib/admin-key";
 import { useToast } from "./ui/toast";
 import { FeedbackModal } from "./FeedbackModal";
+import { storeAuthToken } from "@/lib/auth-token";
 
 const navItems = [
   { href: "/app/dashboard", label: "Dashboard" },
@@ -133,8 +134,19 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               className="text-xs font-semibold text-amber-800 hover:text-amber-900"
               onClick={() => {
                 setImpersonatingFlag(false);
-                hardResetSession();
-                window.location.href = "/admin/dashboard";
+                const restored = consumeAdminSessionBackup();
+                if (restored.token) {
+                  storeAuthToken(restored.token);
+                  // Clear per-user workspace selection to avoid cross-account 404s after returning.
+                  try {
+                    window.localStorage.removeItem("rorun_current_business_id");
+                  } catch {}
+                  window.location.href = restored.returnUrl || "/admin/workspaces";
+                } else {
+                  // If no backup exists, fall back to a clean logout.
+                  hardResetSession();
+                  window.location.href = "/admin/login";
+                }
               }}
             >
               Stop

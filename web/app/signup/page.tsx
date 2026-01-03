@@ -10,6 +10,7 @@ import { PublicShell } from "@/components/public/PublicShell";
 import { signup } from "@/lib/api/auth";
 import { ApiError } from "@/lib/api/client";
 import { Eye, EyeOff } from "lucide-react";
+import { PublicFeedbackButton } from "@/components/public/PublicFeedbackButton";
 
 export default function SignupPage() {
   const router = useRouter();
@@ -65,6 +66,7 @@ export default function SignupPage() {
     <PublicShell
       rightNav={
         <nav className="flex items-center gap-3 text-xs">
+          <PublicFeedbackButton />
           <Link href="/login" className="text-slate-200 hover:text-white">
             Log in
           </Link>

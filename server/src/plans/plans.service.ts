@@ -53,7 +53,6 @@ export class PlansService {
     try {
       const subscription = await this.prisma.subscription.findFirst({
         where: {
-          userId,
           businessId,
           status: 'active',
           OR: [{ endsAt: null }, { endsAt: { gte: new Date() } }],

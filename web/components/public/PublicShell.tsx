@@ -2,6 +2,7 @@ import Link from "next/link";
 import Image from "next/image";
 import { Button } from "@/components/ui/button";
 import { BrandLink } from "@/components/BrandLink";
+import { PublicFeedbackButton } from "@/components/public/PublicFeedbackButton";
 
 export function PublicTopNav({
   right,
@@ -24,6 +25,7 @@ export function PublicTopNav({
 
       {right ?? (
         <nav className="flex items-center gap-3 text-xs">
+          <PublicFeedbackButton />
           <Link href="/login" className="text-slate-200 hover:text-white">
             Log in
           </Link>

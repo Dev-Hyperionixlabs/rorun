@@ -11,7 +11,8 @@ import { PLANS, PlanId } from "@/lib/plans";
 import { ErrorState } from "@/components/ui/page-state";
 import { getAdminWorkspace, impersonateUser, setAdminWorkspacePlan } from "@/lib/api/admin";
 import { storeAuthToken } from "@/lib/auth-token";
-import { setImpersonatingFlag, getAdminKey } from "@/lib/admin-key";
+import { setImpersonatingFlag, getAdminKey, backupAdminSession } from "@/lib/admin-key";
+import { getStoredAuthToken } from "@/lib/auth-token";
 import { API_BASE } from "@/lib/api/client";
 
 interface WorkspaceDetail {
@@ -116,10 +117,17 @@ export default function WorkspaceDetailPage() {
     if (!workspace) return;
     setImpersonating(true);
     try {
+      // Backup the current admin session token so "Stop" can return to admin without logging out.
+      const adminToken = getStoredAuthToken();
+      backupAdminSession(adminToken || "", `/admin/workspaces/${id}`);
+
       const data = await impersonateUser(workspace.business.ownerUserId);
       if (data?.token) {
         storeAuthToken(data.token);
         setImpersonatingFlag(true);
+        try {
+          window.localStorage.removeItem("rorun_current_business_id");
+        } catch {}
         window.location.href = "/app/dashboard";
       }
     } catch (err) {

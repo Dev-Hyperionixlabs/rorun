@@ -21,6 +21,9 @@ export interface Condition {
   value?: any;
   and?: Condition[];
   or?: Condition[];
+  // Backward-compatible aliases used by older UIs/configs
+  all?: Condition[];
+  any?: Condition[];
 }
 
 export interface RuleEvaluationResult {
@@ -53,6 +56,13 @@ export class TaxRulesEngine {
     }
     if (condition.or) {
       return condition.or.some((c) => this.evaluateCondition(c, profile));
+    }
+    // Backward-compatible aliases
+    if (condition.all) {
+      return condition.all.every((c) => this.evaluateCondition(c, profile));
+    }
+    if (condition.any) {
+      return condition.any.some((c) => this.evaluateCondition(c, profile));
     }
 
     // Handle field-based conditions

@@ -195,7 +195,8 @@ export const MockApiProvider: React.FC<{ children: React.ReactNode }> = ({ child
 
       const [user, businesses, knowledge] = await Promise.all([
         getCurrentUser(),
-        getBusinesses().catch(() => []),
+        // If businesses fails, treat it as a real failure (don't silently continue with stale IDs)
+        getBusinesses(),
         getKnowledgeArticles().catch(() => []),
       ]);
 
@@ -207,11 +208,16 @@ export const MockApiProvider: React.FC<{ children: React.ReactNode }> = ({ child
         preferredBusinessId = null;
       }
 
-      const businessId =
-        (preferredBusinessId && businesses.some((b) => b.id === preferredBusinessId) ? preferredBusinessId : null) ||
-        user?.currentBusinessId ||
-        businesses[0]?.id ||
-        null;
+      const preferredValid =
+        preferredBusinessId && businesses.some((b) => b.id === preferredBusinessId)
+          ? preferredBusinessId
+          : null;
+      const userPreferredValid =
+        user?.currentBusinessId && businesses.some((b) => b.id === user.currentBusinessId)
+          ? user.currentBusinessId
+          : null;
+
+      const businessId = preferredValid || userPreferredValid || businesses[0]?.id || null;
       const year = new Date().getFullYear();
 
       const [alerts, txResponse, documents, planResponse, summary] = await Promise.all([

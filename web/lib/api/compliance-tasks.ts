@@ -47,7 +47,7 @@ export async function getComplianceTasks(
 
   const qs = params.toString();
   return api.get<ComplianceTask[]>(
-    `/businesses/${businessId}/compliance-tasks${qs ? `?${qs}` : ""}`
+    `/businesses/${businessId}/compliance/tasks${qs ? `?${qs}` : ""}`
   );
 }
 
@@ -59,7 +59,7 @@ export async function getComplianceTask(
   taskId: string
 ): Promise<ComplianceTask> {
   return api.get<ComplianceTask>(
-    `/businesses/${businessId}/compliance-tasks/${taskId}`
+    `/businesses/${businessId}/compliance/tasks/${taskId}`
   );
 }
 
@@ -71,10 +71,17 @@ export async function updateTaskStatus(
   taskId: string,
   status: ComplianceTask["status"]
 ): Promise<ComplianceTask> {
-  return api.patch<ComplianceTask>(
-    `/businesses/${businessId}/compliance-tasks/${taskId}`,
-    { status }
-  );
+  if (status === "in_progress") {
+    return api.post<ComplianceTask>(`/businesses/${businessId}/compliance/tasks/${taskId}/start`, {});
+  }
+  if (status === "done") {
+    return api.post<ComplianceTask>(`/businesses/${businessId}/compliance/tasks/${taskId}/complete`, {});
+  }
+  if (status === "dismissed") {
+    return api.post<ComplianceTask>(`/businesses/${businessId}/compliance/tasks/${taskId}/dismiss`, {});
+  }
+  // For statuses without explicit transitions, keep it a no-op fetch
+  return getComplianceTask(businessId, taskId);
 }
 
 /**
