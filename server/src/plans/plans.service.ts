@@ -45,8 +45,11 @@ export class PlansService {
   }
 
   async getEffectivePlan(userId: string, businessId: string) {
-    // IMPORTANT: avoid depending on `plans` / `plan_features` tables here.
-    // We only need the active subscription's planId; feature entitlement comes from `plan.types.ts`.
+    // We store Subscription.planId as:
+    // - preferred: Plan.id (UUID) referencing plans table
+    // - fallback: planKey (free/basic/business/accountant) in older environments
+    //
+    // This method must always return a PlanId (planKey) for frontend gating.
     try {
       const subscription = await this.prisma.subscription.findFirst({
         where: {
@@ -59,7 +62,27 @@ export class PlansService {
         select: { planId: true },
       });
 
-      const planId = ((subscription?.planId || 'free') as string).toLowerCase() as PlanId;
+      const raw = ((subscription?.planId || 'free') as string).toLowerCase();
+      const known: PlanId[] = ['free', 'basic', 'business', 'accountant'];
+
+      // If stored as a planKey already, use it.
+      let planId: PlanId = (known.includes(raw as PlanId) ? (raw as PlanId) : 'free');
+
+      // If stored as a Plan UUID, try to resolve to planKey.
+      if (!known.includes(raw as PlanId) && raw !== 'free') {
+        try {
+          const plan = await this.prisma.plan.findUnique({
+            where: { id: subscription?.planId as string },
+            select: { planKey: true },
+          });
+          const key = (plan?.planKey || '').toLowerCase();
+          if (known.includes(key as PlanId)) planId = key as PlanId;
+        } catch (e: any) {
+          // plans table/planKey column might not exist yet; keep default.
+          console.warn('[PlansService.getEffectivePlan] Could not resolve planKey:', e?.message);
+        }
+      }
+
       const featuresMap = getPlanFeatures(planId);
       const features = Object.entries(featuresMap)
         .filter(([_, enabled]) => !!enabled)

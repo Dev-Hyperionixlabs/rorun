@@ -158,6 +158,7 @@ function PlanSettingsSection() {
     setError(null);
     setSuccess(null);
     setLoading(id);
+    let usedDirect = false;
 
     try {
       // Prefer real billing if available; otherwise fall back to server-side plan switch.
@@ -172,6 +173,7 @@ function PlanSettingsSection() {
         } catch (e: any) {
           // billing not configured or failed; fall back to direct plan change
           console.warn("Billing checkout failed, using direct plan change:", e?.message);
+          usedDirect = true;
         }
       }
 
@@ -181,7 +183,9 @@ function PlanSettingsSection() {
       setSuccess(`Plan updated to ${PLANS.find(p => p.id === id)?.name || id}!`);
       addToast({ 
         title: "Plan updated", 
-        description: `You're now on the ${PLANS.find(p => p.id === id)?.name || id} plan.` 
+        description: usedDirect
+          ? `Billing isn’t enabled yet — switched you to ${PLANS.find(p => p.id === id)?.name || id} for now.`
+          : `You're now on the ${PLANS.find(p => p.id === id)?.name || id} plan.`,
       });
     } catch (e: any) {
       setError(e?.message || "Failed to update plan. Please try again.");

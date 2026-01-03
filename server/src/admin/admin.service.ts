@@ -317,40 +317,46 @@ export class AdminService {
       // Known plan keys that we support (matches frontend entitlements)
       const KNOWN_PLANS = ['free', 'basic', 'business', 'accountant'];
       const normalizedPlanId = planId.toLowerCase();
-      
-      // Try to find plan in DB (optional - plans table may not exist or be seeded)
-      let dbPlanId: string = planId;
+
+      // Always return planKey to clients, but store Plan.id when possible.
+      let resolvedPlanKey: string = normalizedPlanId;
+      let resolvedPlanDbId: string | null = null;
+
       try {
-        let plan = await this.prisma.plan.findFirst({
-          where: { 
-            OR: [
-              { id: planId },
-              { planKey: normalizedPlanId }
-            ],
-            isActive: true
-          },
-        }).catch(() => null);
-        
-        if (!plan) {
-          plan = await this.prisma.plan.findFirst({
+        if (KNOWN_PLANS.includes(normalizedPlanId)) {
+          const plan = await this.prisma.plan.upsert({
+            where: { planKey: normalizedPlanId },
+            update: { isActive: true },
+            create: {
+              name: normalizedPlanId,
+              monthlyPrice: normalizedPlanId === 'free' ? 0 : normalizedPlanId === 'basic' ? 2000 : normalizedPlanId === 'business' ? 5000 : 0,
+              isActive: true,
+              planKey: normalizedPlanId,
+              currency: 'NGN',
+            },
+            select: { id: true, planKey: true },
+          });
+          resolvedPlanDbId = plan.id;
+          resolvedPlanKey = (plan.planKey || normalizedPlanId).toLowerCase();
+        } else {
+          const plan = await this.prisma.plan.findFirst({
             where: { id: planId, isActive: true },
-          }).catch(() => null);
-        }
-        
-        if (plan) {
-          dbPlanId = plan.id;
+            select: { id: true, planKey: true },
+          });
+          if (plan) {
+            resolvedPlanDbId = plan.id;
+            resolvedPlanKey = (plan.planKey || '').toLowerCase() || normalizedPlanId;
+          }
         }
       } catch (err: any) {
-        console.warn('[AdminService.setWorkspacePlan] Plan lookup failed:', err?.message);
+        console.warn('[AdminService.setWorkspacePlan] Plan lookup/upsert failed:', err?.message);
       }
-      
-      // If no DB plan found, check if it's a known plan key
-      if (dbPlanId === planId && !KNOWN_PLANS.includes(normalizedPlanId)) {
+
+      if (!KNOWN_PLANS.includes(normalizedPlanId) && !resolvedPlanDbId) {
         throw new Error(`Plan '${planId}' is not recognized. Use: free, basic, business, or accountant.`);
       }
-      
-      // Use the normalized plan key if DB plan wasn't found
-      const effectivePlanId = dbPlanId || normalizedPlanId;
+
+      const effectiveStoredPlanId = resolvedPlanDbId || normalizedPlanId;
 
       const biz = await this.prisma.business.findUnique({ where: { id } });
       if (!biz) {
@@ -379,7 +385,7 @@ export class AdminService {
           where: { id: existing.id },
           data: {
             userId: biz.ownerUserId,
-            planId: effectivePlanId,
+            planId: effectiveStoredPlanId,
             status: 'active',
             startedAt: now,
             endsAt: null,
@@ -391,14 +397,14 @@ export class AdminService {
           data: {
             businessId: id,
             userId: biz.ownerUserId,
-            planId: effectivePlanId,
+            planId: effectiveStoredPlanId,
             status: 'active',
             startedAt: now,
           },
         });
       }
       
-      return { planId: effectivePlanId };
+      return { planId: resolvedPlanKey };
     } catch (err: any) {
       console.error('[AdminService.setWorkspacePlan] Failed:', err?.message);
       throw err;

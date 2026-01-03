@@ -47,43 +47,51 @@ export class SubscriptionsService {
       const KNOWN_PLANS = ['free', 'basic', 'business', 'accountant'];
       const normalizedPlanId = planId.toLowerCase();
       
-      // Try to find plan in DB (optional - plans table may not exist or be seeded)
-      let dbPlanId: string = planId;
+      // We always return a planKey to clients, but store a Plan.id (UUID) when possible.
+      let resolvedPlanKey: string = normalizedPlanId;
+      let resolvedPlanDbId: string | null = null;
+
       try {
-        // First try by planKey, then by id
-        let plan = await this.prisma.plan.findFirst({
-          where: { 
-            OR: [
-              { id: planId },
-              { planKey: normalizedPlanId }
-            ],
-            isActive: true
-          },
-        }).catch(() => null);
-        
-        // If planKey query failed, try id only
-        if (!plan) {
-          plan = await this.prisma.plan.findFirst({
+        // Prefer upsert by planKey for known plans (ensures DB has the record even if seed didn't run)
+        if (KNOWN_PLANS.includes(normalizedPlanId)) {
+          const plan = await this.prisma.plan.upsert({
+            where: { planKey: normalizedPlanId },
+            update: { isActive: true },
+            create: {
+              name: normalizedPlanId,
+              monthlyPrice: normalizedPlanId === 'free' ? 0 : normalizedPlanId === 'basic' ? 2000 : normalizedPlanId === 'business' ? 5000 : 0,
+              isActive: true,
+              planKey: normalizedPlanId,
+              currency: 'NGN',
+            },
+            select: { id: true, planKey: true },
+          });
+          resolvedPlanDbId = plan.id;
+          resolvedPlanKey = (plan.planKey || normalizedPlanId).toLowerCase();
+        } else {
+          // If caller passed a Plan.id, resolve its planKey
+          const plan = await this.prisma.plan.findFirst({
             where: { id: planId, isActive: true },
-          }).catch(() => null);
-        }
-        
-        if (plan) {
-          dbPlanId = plan.id;
+            select: { id: true, planKey: true },
+          });
+          if (plan) {
+            resolvedPlanDbId = plan.id;
+            resolvedPlanKey = (plan.planKey || '').toLowerCase() || normalizedPlanId;
+          }
         }
       } catch (err: any) {
         // Plan table may not exist - that's OK if planId is a known key
         console.warn('[SubscriptionsService] Plan lookup failed:', err?.message);
       }
       
-      // If no DB plan found, check if it's a known plan key (for setups without seeded plans)
-      if (dbPlanId === planId && !KNOWN_PLANS.includes(normalizedPlanId)) {
+      // If not a known plan key and we couldn't resolve a DB plan, reject.
+      if (!KNOWN_PLANS.includes(normalizedPlanId) && !resolvedPlanDbId) {
         // Only reject if it's not a known plan key
         throw new BadRequestException(`Plan '${planId}' is not recognized. Use: free, basic, business, or accountant.`);
       }
       
-      // Use the normalized plan key if DB plan wasn't found
-      const effectivePlanId = dbPlanId || normalizedPlanId;
+      // Store Plan.id when we have it, otherwise fall back to planKey (legacy / drift scenarios).
+      const effectiveStoredPlanId = resolvedPlanDbId || normalizedPlanId;
 
       // Deactivate current active subscriptions
       await this.prisma.subscription.updateMany({
@@ -105,7 +113,7 @@ export class SubscriptionsService {
           where: { id: existing.id },
           data: {
             userId,
-            planId: effectivePlanId,
+            planId: effectiveStoredPlanId,
             status: 'active',
             startedAt: now,
             endsAt: null,
@@ -117,14 +125,15 @@ export class SubscriptionsService {
           data: {
             userId,
             businessId,
-            planId: effectivePlanId,
+            planId: effectiveStoredPlanId,
             status: 'active',
             startedAt: now,
           },
         });
       }
 
-      return { planId: effectivePlanId, subscription };
+      // Always return planKey to clients for consistent gating
+      return { planId: (resolvedPlanKey || normalizedPlanId) as any, subscription };
     } catch (err: any) {
       console.error('[SubscriptionsService.setActiveSubscription] Failed:', err?.message);
       // If it's already a BadRequestException, rethrow it
