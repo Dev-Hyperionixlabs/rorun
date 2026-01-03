@@ -213,4 +213,35 @@ export async function testAdminTaxEvaluation(ruleSetId: string, input: { busines
   });
 }
 
+// --- Feedback ---
+
+export type AdminFeedback = {
+  id: string;
+  createdAt: string;
+  message: string;
+  email: string | null;
+  pageUrl: string | null;
+  businessId: string | null;
+  userId: string | null;
+  status: "open" | "resolved";
+  adminNotes: string | null;
+};
+
+export async function getAdminFeedback(params?: { status?: "open" | "resolved"; limit?: number; offset?: number }) {
+  const sp = new URLSearchParams();
+  if (params?.status) sp.set("status", params.status);
+  if (params?.limit != null) sp.set("limit", String(params.limit));
+  if (params?.offset != null) sp.set("offset", String(params.offset));
+  const suffix = sp.toString() ? `?${sp}` : "";
+  return adminFetch<{ items: AdminFeedback[]; total: number; skip: number; take: number }>(`/admin/feedback${suffix}`);
+}
+
+export async function updateAdminFeedback(id: string, input: { status?: "open" | "resolved"; adminNotes?: string }) {
+  return adminFetch<AdminFeedback>(`/admin/feedback/${id}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(input),
+  });
+}
+
 

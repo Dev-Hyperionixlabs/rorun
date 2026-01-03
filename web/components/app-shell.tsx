@@ -3,7 +3,7 @@
 import Link from "next/link";
 import Image from "next/image";
 import { usePathname } from "next/navigation";
-import { Bell, Menu, LogOut } from "lucide-react";
+import { Bell, Menu, LogOut, MessageSquare } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { useMockApi } from "@/lib/mock-api";
 import { Button } from "./ui/button";
@@ -13,6 +13,7 @@ import { BrandLink } from "./BrandLink";
 import { logout } from "@/lib/api/auth";
 import { isImpersonating, setImpersonatingFlag } from "@/lib/admin-key";
 import { useToast } from "./ui/toast";
+import { FeedbackModal } from "./FeedbackModal";
 
 const navItems = [
   { href: "/app/dashboard", label: "Dashboard" },
@@ -34,6 +35,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const [showProfileMenu, setShowProfileMenu] = useState(false);
   const [impersonating, setImpersonating] = useState(false);
   const [loggingOut, setLoggingOut] = useState(false);
+  const [feedbackOpen, setFeedbackOpen] = useState(false);
 
   const handleLogout = async () => {
     setLoggingOut(true);
@@ -117,6 +119,11 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
   return (
     <div className="min-h-screen bg-slate-50 text-slate-900">
+      <FeedbackModal
+        open={feedbackOpen}
+        onClose={() => setFeedbackOpen(false)}
+        businessId={business?.id}
+      />
       {impersonating && (
         <div className="bg-amber-50 border-b border-amber-200 px-4 py-2 text-xs text-amber-900">
           <div className="mx-auto flex max-w-5xl items-center justify-between gap-3">
@@ -278,6 +285,17 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                 </Link>
               );
             })}
+            <button
+              type="button"
+              className="mt-2 w-full flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-100"
+              onClick={() => {
+                setNavOpen(false);
+                setFeedbackOpen(true);
+              }}
+            >
+              <MessageSquare className="h-4 w-4 text-slate-500" />
+              Feedback
+            </button>
             {/* Mobile-only logout */}
             <button
               type="button"
