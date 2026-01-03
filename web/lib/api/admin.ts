@@ -93,4 +93,124 @@ export async function getAdminUser(id: string) {
   }>(`/admin/users/${id}`);
 }
 
+// --- Tax Rules (Rule Sets v2) ---
+
+export type AdminTaxRuleSet = {
+  id: string;
+  version: string;
+  name: string;
+  status: "draft" | "active" | "archived";
+  effectiveFrom: string;
+  effectiveTo: string | null;
+  description: string | null;
+  createdAt: string;
+  updatedAt: string;
+  _count?: { rules: number; deadlineTemplates: number };
+};
+
+export type AdminTaxRuleV2 = {
+  id: string;
+  ruleSetId: string;
+  key: string;
+  type: "eligibility" | "obligation" | "deadline" | "threshold";
+  priority: number;
+  conditionsJson: any;
+  outcomeJson: any;
+  explanation: string;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type AdminDeadlineTemplate = {
+  id: string;
+  ruleSetId: string;
+  key: string;
+  frequency: "monthly" | "quarterly" | "annual" | "one_time";
+  dueDayOfMonth: number | null;
+  dueMonth: number | null;
+  dueDay: number | null;
+  offsetDays: number | null;
+  appliesWhenJson: any | null;
+  title: string;
+  description: string;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export async function getAdminTaxRuleSets() {
+  return adminFetch<AdminTaxRuleSet[]>(`/admin/tax-rules/rule-sets`);
+}
+
+export async function getAdminTaxRuleSet(id: string) {
+  return adminFetch<AdminTaxRuleSet & { rules: AdminTaxRuleV2[]; deadlineTemplates: AdminDeadlineTemplate[] }>(
+    `/admin/tax-rules/rule-sets/${id}`,
+  );
+}
+
+export async function createAdminTaxRuleSet(input: {
+  version: string;
+  name: string;
+  effectiveFrom: string; // ISO
+  effectiveTo?: string;
+  description?: string;
+}) {
+  return adminFetch<AdminTaxRuleSet>(`/admin/tax-rules/rule-sets`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(input),
+  });
+}
+
+export async function updateAdminTaxRuleSet(
+  id: string,
+  input: { name?: string; status?: "draft" | "active" | "archived"; effectiveTo?: string; description?: string },
+) {
+  return adminFetch<AdminTaxRuleSet>(`/admin/tax-rules/rule-sets/${id}`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(input),
+  });
+}
+
+export async function createAdminTaxRule(ruleSetId: string, input: {
+  key: string;
+  type: "eligibility" | "obligation" | "deadline" | "threshold";
+  priority: number;
+  conditionsJson: any;
+  outcomeJson: any;
+  explanation: string;
+}) {
+  return adminFetch<AdminTaxRuleV2>(`/admin/tax-rules/rule-sets/${ruleSetId}/rules`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(input),
+  });
+}
+
+export async function createAdminDeadlineTemplate(ruleSetId: string, input: {
+  key: string;
+  frequency: "monthly" | "quarterly" | "annual" | "one_time";
+  dueDayOfMonth?: number;
+  dueMonth?: number;
+  dueDay?: number;
+  offsetDays?: number;
+  appliesWhenJson?: any;
+  title: string;
+  description: string;
+}) {
+  return adminFetch<AdminDeadlineTemplate>(`/admin/tax-rules/rule-sets/${ruleSetId}/deadline-templates`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(input),
+  });
+}
+
+export async function testAdminTaxEvaluation(ruleSetId: string, input: { businessProfile: any; taxYear?: number }) {
+  return adminFetch<any>(`/admin/tax-rules/rule-sets/${ruleSetId}/test`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(input),
+  });
+}
+
 
