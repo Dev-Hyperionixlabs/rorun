@@ -36,6 +36,7 @@ import { TaxRulesModule } from './tax-rules/tax-rules.module';
 import { ReviewModule } from './review/review.module';
 import { OtpModule } from './otp/otp.module';
 import { PaymentsModule } from './payments/payments.module';
+import { FeedbackModule } from './feedback/feedback.module';
 import { ThrottlerModule, ThrottlerGuard } from '@nestjs/throttler';
 import { APP_GUARD } from '@nestjs/core';
 
@@ -87,6 +88,7 @@ import { APP_GUARD } from '@nestjs/core';
     ReviewModule,
     OtpModule,
     PaymentsModule,
+    FeedbackModule,
     ThrottlerModule.forRoot([
       {
         ttl: 60000, // 1 minute

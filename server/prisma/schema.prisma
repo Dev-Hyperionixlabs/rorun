@@ -30,6 +30,7 @@ model User {
   transactionOverrides TransactionOverride[]
   otpChallenges      OtpChallenge[]
   businessMembers    BusinessMember[]
+  feedbacks          Feedback[]
 
   @@map("users")
 }
@@ -72,8 +73,32 @@ model Business {
   reviewIssues          ReviewIssue[]
   members              BusinessMember[]
   paymentEvents         PaymentEvent[]
+  feedbacks            Feedback[]
 
   @@map("businesses")
+}
+
+model Feedback {
+  id         String   @id @default(uuid())
+  createdAt  DateTime @default(now())
+
+  message    String   @db.Text
+  email      String?
+  pageUrl    String?
+
+  businessId String?
+  userId     String?
+
+  status     String   @default("open") // open|resolved
+  adminNotes String?  @db.Text
+
+  business   Business? @relation(fields: [businessId], references: [id], onDelete: SetNull)
+  user       User?     @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([status, createdAt])
+  @@index([businessId])
+  @@index([userId])
+  @@map("feedback")
 }
 
 model TaxProfile {
