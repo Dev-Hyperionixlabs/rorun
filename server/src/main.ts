@@ -4,6 +4,9 @@ import { SwaggerModule, DocumentBuilder } from '@nestjs/swagger';
 import { AppModule } from './app.module';
 import { json } from 'express';
 import { PrismaExceptionFilter } from './filters/prisma-exception.filter';
+import { GlobalExceptionFilter } from './filters/global-exception.filter';
+import { requestIdMiddleware } from './middleware/request-id.middleware';
+import { PrismaService } from './prisma/prisma.service';
 
 async function bootstrap() {
   const logger = new Logger('Bootstrap');
@@ -12,6 +15,9 @@ async function bootstrap() {
   const app = await NestFactory.create(AppModule, {
     logger: isProduction ? ['error', 'warn', 'log'] : ['error', 'warn', 'log', 'debug', 'verbose'],
   });
+
+  // Stable request id for every request/response
+  app.use(requestIdMiddleware);
 
   // Capture raw request body for webhook signature verification (e.g. Paystack)
   app.use(
@@ -77,8 +83,8 @@ async function bootstrap() {
     }),
   );
 
-  // Global exception filter for Prisma errors - prevents raw stack traces from leaking to clients
-  app.useGlobalFilters(new PrismaExceptionFilter());
+  // Global exception filters (do NOT leak raw stacks to clients)
+  app.useGlobalFilters(new PrismaExceptionFilter(), new GlobalExceptionFilter());
 
   // Swagger API documentation (disabled in production)
   if (!isProduction) {
@@ -92,12 +98,39 @@ async function bootstrap() {
     SwaggerModule.setup('api', app, document);
   }
 
-  // Health check endpoint
-  app.getHttpAdapter().get('/health', (req, res) => {
-    res.status(200).json({
-      status: 'ok',
+  // Health check endpoint (DB + last migration; safe for prod)
+  app.getHttpAdapter().get('/health', async (_req, res) => {
+    const prisma = app.get(PrismaService);
+    let dbOk = false;
+    let lastMigration: { name?: string | null; finishedAt?: string | null } | null = null;
+
+    try {
+      await prisma.$queryRaw`SELECT 1`;
+      dbOk = true;
+
+      try {
+        const rows: any[] =
+          await prisma.$queryRaw`SELECT migration_name, finished_at FROM _prisma_migrations WHERE finished_at IS NOT NULL ORDER BY finished_at DESC LIMIT 1`;
+        if (rows?.[0]) {
+          lastMigration = {
+            name: rows[0].migration_name ?? null,
+            finishedAt: rows[0].finished_at ? new Date(rows[0].finished_at).toISOString() : null,
+          };
+        }
+      } catch {
+        // _prisma_migrations may not exist yet on very first boot; keep it null
+      }
+    } catch {
+      dbOk = false;
+    }
+
+    const status = dbOk ? 200 : 503;
+    res.status(status).json({
+      status: dbOk ? 'ok' : 'degraded',
       timestamp: new Date().toISOString(),
       environment: process.env.NODE_ENV || 'development',
+      db: { ok: dbOk },
+      prisma: { lastMigration },
     });
   });
 

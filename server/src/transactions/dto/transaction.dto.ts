@@ -17,7 +17,9 @@ export class CreateTransactionDto {
   type: string;
 
   @ApiProperty()
+  @Type(() => Number)
   @IsNumber()
+  @Min(0.01)
   amount: number;
 
   @ApiProperty({ required: false, default: 'NGN' })

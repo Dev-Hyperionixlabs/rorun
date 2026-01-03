@@ -54,9 +54,10 @@ export function AddTransactionModal({
   // Deduplicate categories by name and filter by type
   const uniqueCategories = useMemo(() => {
     const seen = new Set<string>();
+    const norm = (s: string) => (s || "").toLowerCase().trim().replace(/\s+/g, " ");
     return categories.filter((c) => {
-      if (c.type !== type && c.type) return false; // Filter by type
-      const key = c.name.toLowerCase();
+      if (c.type && norm(c.type) !== norm(type)) return false; // Filter by type (case/space insensitive)
+      const key = `${norm(c.name)}:${norm(c.type || type)}`;
       if (seen.has(key)) return false; // Skip duplicates
       seen.add(key);
       return true;

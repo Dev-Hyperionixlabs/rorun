@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { BusinessesService } from '../businesses/businesses.service';
 import {
@@ -18,12 +18,29 @@ export class TransactionsService {
     // Verify business ownership
     await this.businessesService.findOne(businessId, userId);
 
+    // Normalize + validate amount/date to avoid Prisma 500s for user input
+    const amount = Number((data as any).amount);
+    if (!Number.isFinite(amount) || amount <= 0) {
+      throw new BadRequestException({
+        code: 'INVALID_AMOUNT',
+        message: 'Amount must be a positive number.',
+      } as any);
+    }
+
+    const parsedDate = new Date(data.date);
+    if (Number.isNaN(parsedDate.getTime())) {
+      throw new BadRequestException({
+        code: 'INVALID_DATE',
+        message: 'Date must be a valid ISO date (e.g. 2026-01-03).',
+      } as any);
+    }
+
     // Build transaction data, handling optional fields carefully
     const txData: any = {
       businessId,
       type: data.type,
-      amount: data.amount,
-      date: new Date(data.date),
+      amount,
+      date: parsedDate,
       description: data.description || null,
       source: data.source || 'manual',
       currency: data.currency || 'NGN',
@@ -83,8 +100,8 @@ export class TransactionsService {
         const minimalData = {
           businessId,
           type: data.type,
-          amount: data.amount,
-          date: new Date(data.date),
+          amount,
+          date: parsedDate,
           description: data.description || null,
           source: data.source || 'manual',
           currency: data.currency || 'NGN',
@@ -193,7 +210,8 @@ export class TransactionsService {
     // Deduplicate by name+type (case insensitive)
     const seen = new Set<string>();
     return categories.filter((cat) => {
-      const key = `${cat.name.toLowerCase()}:${cat.type}`;
+      const norm = (s: string) => (s || '').toLowerCase().trim().replace(/\s+/g, ' ');
+      const key = `${norm(cat.name)}:${norm(cat.type)}`;
       if (seen.has(key)) return false;
       seen.add(key);
       return true;

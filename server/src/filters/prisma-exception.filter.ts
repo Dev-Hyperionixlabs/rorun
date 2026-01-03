@@ -26,11 +26,17 @@ export class PrismaExceptionFilter implements ExceptionFilter {
     const response = ctx.getResponse<Response>();
     const request = ctx.getRequest();
 
+    const requestId =
+      request?.requestId ||
+      request?.headers?.['x-request-id']?.toString() ||
+      uuidv4().split('-')[0];
+
     // Generate a unique error ID for tracking
     const errorId = uuidv4().split('-')[0]; // Short ID like "a3f8b2c1"
 
     // Log the full error server-side for debugging
     console.error(`[PrismaError:${errorId}]`, {
+      requestId,
       name: exception.name,
       message: exception.message,
       path: request.url,
@@ -107,6 +113,7 @@ export class PrismaExceptionFilter implements ExceptionFilter {
       error: code,
       message: userMessage,
       errorId: errorId,
+      requestId,
       timestamp: new Date().toISOString(),
     });
   }
