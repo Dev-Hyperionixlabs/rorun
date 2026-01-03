@@ -18,6 +18,7 @@ import { BankService } from './bank.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { ExchangeMonoDto } from './dto/bank.dto';
 import { BusinessRoleGuard, RequireBusinessRoles } from '../auth/guards/business-role.guard';
+import { BankConnectAttemptDto } from './dto/bank-connect-attempt.dto';
 
 @ApiTags('bank')
 @Controller('businesses/:businessId/bank')
@@ -92,6 +93,22 @@ export class BankController {
     const ip = req.ip || req.headers['x-forwarded-for'] || req.connection.remoteAddress;
     const userAgent = req.headers['user-agent'];
     return this.bankService.disconnectConnection(connectionId, businessId, req.user.id, ip, userAgent);
+  }
+
+  @Post('connect-attempts')
+  @UseGuards(BusinessRoleGuard)
+  @RequireBusinessRoles('owner', 'accountant')
+  @ApiParam({ name: 'businessId', description: 'Business ID' })
+  @ApiOperation({ summary: 'Log a bank connect attempt for support/diagnostics' })
+  async logConnectAttempt(
+    @Param('businessId') businessId: string,
+    @Request() req,
+    @Body() dto: BankConnectAttemptDto,
+  ) {
+    const ip = req.ip || req.headers['x-forwarded-for'] || req.connection?.remoteAddress;
+    const userAgent = req.headers['user-agent'];
+    await this.bankService.logConnectAttempt(businessId, req.user.id, dto, ip, userAgent);
+    return { ok: true };
   }
 }
 

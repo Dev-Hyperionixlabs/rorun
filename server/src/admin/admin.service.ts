@@ -609,6 +609,29 @@ export class AdminService {
     });
   }
 
+  async listBankConnectAttempts(params: { success?: boolean; limit?: number; offset?: number }) {
+    const take = Math.min(Math.max(params.limit ?? 50, 1), 200);
+    const skip = Math.max(params.offset ?? 0, 0);
+    const where: any = {};
+    if (typeof params.success === 'boolean') where.success = params.success;
+
+    try {
+      const [items, total] = await Promise.all([
+        (this.prisma as any).bankConnectAttempt.findMany({
+          where,
+          orderBy: { createdAt: 'desc' },
+          skip,
+          take,
+        }),
+        (this.prisma as any).bankConnectAttempt.count({ where }),
+      ]);
+      return { items, total, skip, take };
+    } catch (err: any) {
+      console.error('[AdminService.listBankConnectAttempts] Failed:', err?.message);
+      return { items: [], total: 0, skip, take };
+    }
+  }
+
   async forceSyncBankConnection(connectionId: string) {
     const connection = await this.prisma.bankConnection.findUnique({
       where: { id: connectionId },

@@ -244,4 +244,34 @@ export async function updateAdminFeedback(id: string, input: { status?: "open" |
   });
 }
 
+// --- Bank connect attempts ---
+
+export type AdminBankConnectAttempt = {
+  id: string;
+  createdAt: string;
+  businessId: string | null;
+  userId: string | null;
+  provider: string;
+  countryCode: string | null;
+  success: boolean;
+  reason: string | null;
+  ip: string | null;
+  userAgent: string | null;
+};
+
+export async function getAdminBankConnectAttempts(params?: {
+  success?: boolean;
+  limit?: number;
+  offset?: number;
+}) {
+  const sp = new URLSearchParams();
+  if (params?.success != null) sp.set("success", String(params.success));
+  if (params?.limit != null) sp.set("limit", String(params.limit));
+  if (params?.offset != null) sp.set("offset", String(params.offset));
+  const suffix = sp.toString() ? `?${sp}` : "";
+  return adminFetch<{ items: AdminBankConnectAttempt[]; total: number; skip: number; take: number }>(
+    `/admin/bank-connect-attempts${suffix}`,
+  );
+}
+
 

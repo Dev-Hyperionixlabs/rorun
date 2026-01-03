@@ -13,6 +13,7 @@ import { TransactionsService } from '../transactions/transactions.service';
 import { AuditService } from '../audit/audit.service';
 import { MonoProvider } from './providers/mono.provider';
 import { ExchangeMonoDto } from './dto/bank.dto';
+import { BankConnectAttemptDto } from './dto/bank-connect-attempt.dto';
 import * as crypto from 'crypto';
 import { encrypt } from '../security/crypto';
 
@@ -36,6 +37,34 @@ export class BankService {
     private auditService: AuditService,
     private monoProvider: MonoProvider,
   ) {}
+
+  async logConnectAttempt(
+    businessId: string,
+    userId: string,
+    dto: BankConnectAttemptDto,
+    ip?: string,
+    userAgent?: string,
+  ) {
+    // best-effort only — never block the user flow
+    try {
+      await this.businessesService.findOne(businessId, userId);
+      await (this.prisma as any).bankConnectAttempt.create({
+        data: {
+          businessId,
+          userId,
+          provider: (dto.provider || 'mono').toLowerCase(),
+          countryCode: dto.countryCode ? dto.countryCode.toUpperCase() : null,
+          success: !!dto.success,
+          reason: dto.reason || null,
+          ip: ip?.toString() || null,
+          userAgent: userAgent?.toString() || null,
+        },
+      });
+    } catch (e: any) {
+      // eslint-disable-next-line no-console
+      console.warn('[BankService.logConnectAttempt] skipped:', e?.message);
+    }
+  }
 
   async getConnections(businessId: string, userId: string) {
     await this.businessesService.findOne(businessId, userId);

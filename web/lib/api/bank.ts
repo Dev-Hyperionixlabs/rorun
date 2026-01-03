@@ -53,6 +53,13 @@ export async function getConnections(businessId: string): Promise<BankConnection
   return http.get(`/businesses/${businessId}/bank/connections`);
 }
 
+export async function logConnectAttempt(
+  businessId: string,
+  data: { provider?: string; success: boolean; reason?: string; countryCode?: string }
+): Promise<{ ok: boolean }> {
+  return http.post(`/businesses/${businessId}/bank/connect-attempts`, data);
+}
+
 export async function initMono(businessId: string): Promise<MonoInitResponse> {
   return http.post(`/businesses/${businessId}/bank/mono/init`, {});
 }
@@ -80,6 +87,7 @@ export async function disconnectConnection(
 
 export const api = {
   getConnections,
+  logConnectAttempt,
   initMono,
   exchangeMono,
   syncConnection,

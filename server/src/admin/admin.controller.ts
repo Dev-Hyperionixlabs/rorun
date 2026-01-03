@@ -238,4 +238,23 @@ export class AdminController {
     this.validateAdmin(headers);
     return this.adminService.forceSyncBankConnection(connectionId);
   }
+
+  @Get('bank-connect-attempts')
+  @ApiHeader({ name: 'x-admin-key', required: true })
+  @ApiOperation({ summary: 'List bank connect attempts (admin)' })
+  async listBankConnectAttempts(
+    @Headers() headers: any,
+    @Query('success') success?: string,
+    @Query('limit') limit?: string,
+    @Query('offset') offset?: string,
+  ) {
+    this.validateAdmin(headers);
+    const parsedSuccess =
+      success === 'true' ? true : success === 'false' ? false : undefined;
+    return this.adminService.listBankConnectAttempts({
+      success: parsedSuccess,
+      limit: limit ? parseInt(limit, 10) : undefined,
+      offset: offset ? parseInt(offset, 10) : undefined,
+    });
+  }
 }

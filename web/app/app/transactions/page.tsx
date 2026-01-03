@@ -16,6 +16,7 @@ import { useMockApi as useMockData } from "@/lib/mock-api";
 import { useMockApi } from "@/lib/mock-api";
 import { RequireAccess } from "@/components/RequireAccess";
 import { canAccess } from "@/lib/entitlements";
+import { getGeo, GeoResult } from "@/lib/api/geo";
 
 export default function TransactionsPage() {
   return (
@@ -41,6 +42,7 @@ function TransactionsPageInner() {
   const [refreshKey, setRefreshKey] = useState(0);
   const { currentPlanId } = useMockApi();
   const slow = useSlowLoading(loading);
+  const [geo, setGeo] = useState<GeoResult | null>(null);
 
   useEffect(() => {
     if (process.env.NEXT_PUBLIC_USE_MOCK_API === "true" && mockBusinesses?.[0]?.id) {
@@ -48,6 +50,13 @@ function TransactionsPageInner() {
       return;
     }
     loadBusiness();
+  }, []);
+
+  useEffect(() => {
+    // Best-effort geo inference for bank connect messaging
+    getGeo()
+      .then((g) => setGeo(g))
+      .catch(() => setGeo(null));
   }, []);
 
   useEffect(() => {
@@ -203,6 +212,7 @@ function TransactionsPageInner() {
           >
             <MonoConnectButton
               businessId={business.id}
+              disabled={!!geo?.countryCode && geo.countryCode !== "NG"}
               onSuccess={() => {
                 setRefreshKey((k) => k + 1);
               }}
@@ -245,10 +255,16 @@ function TransactionsPageInner() {
                 <p className="text-xs text-slate-500">
                   Automatically sync transactions from your bank account. Available for Business and Accountant plans.
                 </p>
+                {geo?.countryCode && geo.countryCode !== "NG" && (
+                  <div className="mt-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">
+                    Bank connection is currently supported only for Nigerian access. Please use “Upload bank statement”.
+                  </div>
+                )}
               </div>
               <RequireAccess planId={currentPlanId} feature="bank_connect">
                 <MonoConnectButton
                   businessId={business.id}
+                  disabled={!!geo?.countryCode && geo.countryCode !== "NG"}
                   onSuccess={() => {
                     setRefreshKey((k) => k + 1);
                   }}

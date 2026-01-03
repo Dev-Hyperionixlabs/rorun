@@ -31,6 +31,7 @@ model User {
   otpChallenges      OtpChallenge[]
   businessMembers    BusinessMember[]
   feedbacks          Feedback[]
+  bankConnectAttempts BankConnectAttempt[]
 
   @@map("users")
 }
@@ -74,8 +75,30 @@ model Business {
   members              BusinessMember[]
   paymentEvents         PaymentEvent[]
   feedbacks            Feedback[]
+  bankConnectAttempts  BankConnectAttempt[]
 
   @@map("businesses")
+}
+
+model BankConnectAttempt {
+  id          String   @id @default(uuid())
+  createdAt   DateTime @default(now())
+  businessId  String?
+  userId      String?
+  provider    String   @default("mono")
+  countryCode String?
+  success     Boolean  @default(false)
+  reason      String?
+  ip          String?
+  userAgent   String?
+
+  business    Business? @relation(fields: [businessId], references: [id], onDelete: SetNull)
+  user        User?     @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([success, createdAt])
+  @@index([businessId])
+  @@index([userId])
+  @@map("bank_connect_attempts")
 }
 
 model Feedback {
