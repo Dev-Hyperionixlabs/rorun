@@ -5,6 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Users, Building2, FileText, TrendingUp } from "lucide-react";
 import { ErrorState } from "@/components/ui/page-state";
 import { getAdminDashboardStats } from "@/lib/api/admin";
+import Link from "next/link";
 
 interface DashboardStats {
   totalUsers: number;
@@ -52,7 +53,8 @@ export default function AdminDashboardPage() {
       {error && <ErrorState title="Couldn’t load admin dashboard" message={error} />}
 
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-        <Card>
+        <Link href="/admin/users">
+          <Card className="cursor-pointer transition hover:shadow-md">
           <CardHeader className="flex flex-row items-center justify-between pb-2">
             <CardTitle className="text-sm font-medium text-slate-500">
               Total Users
@@ -64,9 +66,11 @@ export default function AdminDashboardPage() {
               {stats?.totalUsers ?? 0}
             </div>
           </CardContent>
-        </Card>
+          </Card>
+        </Link>
 
-        <Card>
+        <Link href="/admin/workspaces">
+          <Card className="cursor-pointer transition hover:shadow-md">
           <CardHeader className="flex flex-row items-center justify-between pb-2">
             <CardTitle className="text-sm font-medium text-slate-500">
               Total Workspaces
@@ -78,7 +82,8 @@ export default function AdminDashboardPage() {
               {stats?.totalBusinesses ?? 0}
             </div>
           </CardContent>
-        </Card>
+          </Card>
+        </Link>
 
         <Card>
           <CardHeader className="flex flex-row items-center justify-between pb-2">

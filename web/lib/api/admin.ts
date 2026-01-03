@@ -73,4 +73,24 @@ export async function impersonateUser(userId: string) {
   });
 }
 
+export type AdminUser = {
+  id: string;
+  name: string | null;
+  email: string | null;
+  phone: string | null;
+  createdAt: string;
+};
+
+export async function getAdminUsers() {
+  return adminFetch<AdminUser[]>(`/admin/users`);
+}
+
+export async function getAdminUser(id: string) {
+  return adminFetch<{
+    user: AdminUser;
+    businesses: Array<{ id: string; name: string }>;
+    memberOf: Array<{ businessId: string; name: string; role: string }>;
+  }>(`/admin/users/${id}`);
+}
+
 

@@ -62,6 +62,48 @@ export class AdminService {
     });
   }
 
+  async getUserDetail(userId: string) {
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: {
+        id: true,
+        name: true,
+        phone: true,
+        email: true,
+        createdAt: true,
+      },
+    });
+
+    if (!user) {
+      return { user: null, businesses: [], memberOf: [] };
+    }
+
+    // Businesses they own
+    const businesses = await this.prisma.business.findMany({
+      where: { ownerUserId: userId },
+      select: { id: true, name: true },
+      orderBy: { createdAt: 'desc' },
+    }).catch(() => []);
+
+    // Businesses they are a member of (best-effort if table exists)
+    const memberOf = await this.prisma.businessMember.findMany({
+      where: { userId },
+      select: {
+        role: true,
+        business: { select: { id: true, name: true } },
+      },
+      orderBy: { createdAt: 'desc' },
+    }).then((rows) =>
+      rows.map((r) => ({
+        businessId: r.business.id,
+        name: r.business.name,
+        role: r.role,
+      })),
+    ).catch(() => []);
+
+    return { user, businesses, memberOf };
+  }
+
   async resetUserPassword(userId: string, newPassword: string) {
     if (!newPassword || newPassword.length < 8) {
       throw new Error('Password must be at least 8 characters');

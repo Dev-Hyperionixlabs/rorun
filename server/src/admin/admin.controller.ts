@@ -41,6 +41,14 @@ export class AdminController {
     return this.adminService.getUsers();
   }
 
+  @Get('users/:id')
+  @ApiHeader({ name: 'x-admin-key', required: true })
+  @ApiOperation({ summary: 'Get user detail (admin only)' })
+  async getUserDetail(@Headers() headers: any, @Param('id') id: string) {
+    this.validateAdmin(headers);
+    return this.adminService.getUserDetail(id);
+  }
+
   @Post('users/:id/reset-password')
   @ApiHeader({ name: 'x-admin-key', required: true })
   @ApiOperation({ summary: 'Reset a user password (admin only)' })
