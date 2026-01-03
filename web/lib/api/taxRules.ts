@@ -22,7 +22,10 @@ export interface ObligationSnapshot {
       key: string;
       title: string;
       frequency: string;
+      dueDate?: string;
       computedDueDateForYear?: string;
+      periodStart?: string;
+      periodEnd?: string;
     }>;
     thresholds?: {
       turnoverThreshold?: number;

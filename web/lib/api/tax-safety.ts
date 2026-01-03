@@ -11,7 +11,7 @@ export interface TaxSafetyScore {
   breakdown: {
     hasCurrentTaxProfile: boolean;
     recordsCoverageRatio: number;
-    receiptCoverageRatio: number;
+    receiptCoverageRatio: number | null;
     hasOverdueObligation: boolean;
     daysUntilNextDeadline: number | null;
   };

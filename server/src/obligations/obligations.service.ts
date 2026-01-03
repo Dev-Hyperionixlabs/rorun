@@ -2,12 +2,23 @@ import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { BusinessesService } from '../businesses/businesses.service';
 import { addDays, isBefore, isAfter } from 'date-fns';
+import { TaxRulesService } from '../tax-rules/tax-rules.service';
+
+function inferTaxTypeFromKey(key: string): string {
+  const k = (key || '').toLowerCase();
+  if (k.includes('vat')) return 'VAT';
+  if (k.includes('cit')) return 'CIT';
+  if (k.includes('wht')) return 'WHT';
+  if (k.includes('paye')) return 'PAYE';
+  return 'OTHER';
+}
 
 @Injectable()
 export class ObligationsService {
   constructor(
     private prisma: PrismaService,
     private businessesService: BusinessesService,
+    private taxRulesService: TaxRulesService,
   ) {}
 
   async findAll(businessId: string, userId: string) {
@@ -46,58 +57,41 @@ export class ObligationsService {
   async generateObligations(businessId: string, userId: string, year: number) {
     await this.businessesService.findOne(businessId, userId);
 
-    const taxProfile = await this.prisma.taxProfile.findUnique({
-      where: {
-        businessId_taxYear: {
-          businessId,
-          taxYear: year,
-        },
-      },
-    });
+    // Evaluate business against active rule set to get deadline templates (2026-ready source of truth)
+    const evaluated = await this.taxRulesService.evaluateBusiness(businessId, userId, year);
+    const deadlines = (evaluated?.evaluation?.outputs?.deadlines || []) as Array<any>;
 
-    if (!taxProfile) {
+    if (!Array.isArray(deadlines) || deadlines.length === 0) {
       return [];
     }
 
-    const obligations = [];
+    const yearStart = new Date(year, 0, 1);
+    const yearEnd = new Date(year, 11, 31, 23, 59, 59);
 
-    // Generate CIT obligations if applicable
-    if (taxProfile.citStatus === 'liable' || taxProfile.citStatus === 'exempt') {
-      // Quarterly CIT filing (example)
-      for (let quarter = 1; quarter <= 4; quarter++) {
-        const periodStart = new Date(year, (quarter - 1) * 3, 1);
-        const periodEnd = new Date(year, quarter * 3, 0);
-        const dueDate = addDays(periodEnd, 30); // 30 days after quarter end
-
-        obligations.push({
+    const obligations = deadlines
+      .map((d) => {
+        const due = d?.dueDate || d?.computedDueDateForYear;
+        if (!due) return null;
+        const dueDate = new Date(due);
+        const periodStart = d?.periodStart ? new Date(d.periodStart) : yearStart;
+        const periodEnd = d?.periodEnd ? new Date(d.periodEnd) : yearEnd;
+        return {
           businessId,
-          taxType: 'CIT',
+          taxType: inferTaxTypeFromKey(String(d.key || '')),
           periodStart,
           periodEnd,
           dueDate,
           status: 'upcoming',
-        });
-      }
-    }
-
-    // Generate VAT obligations if registered
-    if (taxProfile.vatStatus === 'registered') {
-      // Monthly VAT filing
-      for (let month = 1; month <= 12; month++) {
-        const periodStart = new Date(year, month - 1, 1);
-        const periodEnd = new Date(year, month, 0);
-        const dueDate = addDays(periodEnd, 21); // 21 days after month end
-
-        obligations.push({
-          businessId,
-          taxType: 'VAT',
-          periodStart,
-          periodEnd,
-          dueDate,
-          status: 'upcoming',
-        });
-      }
-    }
+        };
+      })
+      .filter(Boolean) as Array<{
+      businessId: string;
+      taxType: string;
+      periodStart: Date;
+      periodEnd: Date;
+      dueDate: Date;
+      status: string;
+    }>;
 
     // Create obligations (upsert to avoid duplicates)
     const createdObligations = [];
@@ -116,7 +110,15 @@ export class ObligationsService {
         });
         createdObligations.push(created);
       } else {
-        createdObligations.push(existing);
+        // Update due date if templates changed (e.g., 2026 reforms / ruleset updates)
+        const updated = await this.prisma.obligation.update({
+          where: { id: existing.id },
+          data: {
+            dueDate: obligation.dueDate,
+            periodEnd: obligation.periodEnd,
+          },
+        });
+        createdObligations.push(updated);
       }
     }
 

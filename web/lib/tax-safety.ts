@@ -27,14 +27,12 @@ export interface TaxSafetyScore {
   };
 }
 
-const HIGH_VALUE_THRESHOLD = 50000;
-
 interface Metrics {
   hasCurrentTaxProfile: boolean;
   monthsElapsedInYear: number;
   monthsWithAnyTransactions: number;
-  highValueTxCount: number;
-  highValueWithDocumentCount: number;
+  expenseTxCount: number;
+  expenseWithDocumentCount: number;
   hasOverdueObligation: boolean;
   daysUntilNextDeadline: number | null;
 }
@@ -58,16 +56,14 @@ export function computeTaxSafetyScoreFromMock(
     monthSet.add(d.getMonth());
   }
 
-  const highValue = yearTransactions.filter(
-    (tx) => tx.amount >= HIGH_VALUE_THRESHOLD
-  );
+  const expenses = yearTransactions.filter((tx) => tx.type === "expense");
 
   const metrics: Metrics = {
     hasCurrentTaxProfile: !!business.eligibility,
     monthsElapsedInYear,
     monthsWithAnyTransactions: monthSet.size,
-    highValueTxCount: highValue.length,
-    highValueWithDocumentCount: highValue.filter((tx) => tx.hasDocument).length,
+    expenseTxCount: expenses.length,
+    expenseWithDocumentCount: expenses.filter((tx) => tx.hasDocument).length,
     hasOverdueObligation: false,
     daysUntilNextDeadline: null,
   };
@@ -86,9 +82,9 @@ export function computeScore(
     metrics.monthsWithAnyTransactions / Math.max(1, metrics.monthsElapsedInYear);
 
   let receiptCoverageRatio: number | null = null;
-  if (metrics.highValueTxCount >= 5) {
+  if (metrics.expenseTxCount >= 5) {
     receiptCoverageRatio =
-      metrics.highValueWithDocumentCount / Math.max(1, metrics.highValueTxCount);
+      metrics.expenseWithDocumentCount / Math.max(1, metrics.expenseTxCount);
   }
 
   let score = 100;
@@ -106,7 +102,7 @@ export function computeScore(
     reasons.push("MEDIUM_RECORDS_COVERAGE");
   }
 
-  if (metrics.highValueTxCount >= 5 && receiptCoverageRatio !== null) {
+  if (metrics.expenseTxCount >= 5 && receiptCoverageRatio !== null) {
     if (receiptCoverageRatio < 0.5) {
       score -= 20;
       reasons.push("LOW_RECEIPT_COVERAGE");

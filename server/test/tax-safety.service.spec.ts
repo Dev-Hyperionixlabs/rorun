@@ -21,8 +21,8 @@ describe('TaxSafetyService scoring', () => {
       hasCurrentTaxProfile: true,
       monthsElapsedInYear: 6,
       monthsWithAnyTransactions: 6,
-      highValueTxCount: 10,
-      highValueWithDocumentCount: 9,
+      expenseTxCount: 10,
+      expenseWithDocumentCount: 9,
       hasOverdueObligation: false,
       daysUntilNextDeadline: 90,
     };
@@ -38,8 +38,8 @@ describe('TaxSafetyService scoring', () => {
       hasCurrentTaxProfile: false,
       monthsElapsedInYear: 6,
       monthsWithAnyTransactions: 2,
-      highValueTxCount: 6,
-      highValueWithDocumentCount: 1,
+      expenseTxCount: 6,
+      expenseWithDocumentCount: 1,
       hasOverdueObligation: true,
       daysUntilNextDeadline: -5,
     };
@@ -65,8 +65,8 @@ describe('TaxSafetyService scoring', () => {
       hasCurrentTaxProfile: false,
       monthsElapsedInYear: 12,
       monthsWithAnyTransactions: 0,
-      highValueTxCount: 20,
-      highValueWithDocumentCount: 0,
+      expenseTxCount: 20,
+      expenseWithDocumentCount: 0,
       hasOverdueObligation: true,
       daysUntilNextDeadline: 1,
     };

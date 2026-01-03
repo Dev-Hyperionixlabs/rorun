@@ -20,6 +20,7 @@ const navItems = [
   { href: "/app/transactions", label: "Transactions" },
   { href: "/app/documents", label: "Documents" },
   { href: "/app/review", label: "Review" },
+  { href: "/app/obligations", label: "Obligations" },
   { href: "/app/summary", label: "Summary" },
   { href: "/app/notifications", label: "Notifications" },
   { href: "/app/education", label: "Education" },

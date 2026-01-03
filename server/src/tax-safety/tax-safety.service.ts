@@ -3,7 +3,6 @@ import { PrismaService } from '../prisma/prisma.service';
 import { BusinessesService } from '../businesses/businesses.service';
 import { FilingPacksService } from '../filing-packs/filing-packs.service';
 import {
-  HIGH_VALUE_THRESHOLD,
   TAX_SAFETY_MAX_SCORE,
   TAX_SAFETY_MIN_SCORE,
   TaxSafetyReasonCode,
@@ -15,8 +14,8 @@ interface Metrics {
   hasCurrentTaxProfile: boolean;
   monthsElapsedInYear: number;
   monthsWithAnyTransactions: number;
-  highValueTxCount: number;
-  highValueWithDocumentCount: number;
+  expenseTxCount: number;
+  expenseWithDocumentCount: number;
   hasOverdueObligation: boolean;
   daysUntilNextDeadline: number | null;
   hasFilingPack: boolean;
@@ -56,6 +55,7 @@ export class TaxSafetyService {
           id: true,
           amount: true,
           date: true,
+          type: true,
         },
       }),
       this.prisma.obligation.findMany({
@@ -89,7 +89,7 @@ export class TaxSafetyService {
 
   private computeMetrics(
     hasCurrentTaxProfile: boolean,
-    transactions: { id: string; amount: any; date: Date }[],
+    transactions: { id: string; amount: any; date: Date; type: string }[],
     obligations: {
       status: string;
       dueDate: Date;
@@ -110,15 +110,14 @@ export class TaxSafetyService {
     }
     const monthsWithAnyTransactions = monthSet.size;
 
-    const highValueTransactions = transactions.filter(
-      (tx) => Number(tx.amount) >= HIGH_VALUE_THRESHOLD,
-    );
-    const highValueTxIds = new Set(highValueTransactions.map((tx) => tx.id));
-
-    const highValueWithDocument = new Set<string>();
+    // Evidence coverage: use all expenses for the year (not only high-value).
+    // This aligns with 2026 "evidence coverage" expectations.
+    const expenseTransactions = transactions.filter((tx) => tx.type === 'expense');
+    const txIds = new Set(expenseTransactions.map((tx) => tx.id));
+    const txWithDocument = new Set<string>();
     for (const doc of documents) {
-      if (doc.relatedTransactionId && highValueTxIds.has(doc.relatedTransactionId)) {
-        highValueWithDocument.add(doc.relatedTransactionId);
+      if (doc.relatedTransactionId && txIds.has(doc.relatedTransactionId)) {
+        txWithDocument.add(doc.relatedTransactionId);
       }
     }
 
@@ -138,8 +137,8 @@ export class TaxSafetyService {
       hasCurrentTaxProfile,
       monthsElapsedInYear,
       monthsWithAnyTransactions,
-      highValueTxCount: highValueTransactions.length,
-      highValueWithDocumentCount: highValueWithDocument.size,
+      expenseTxCount: expenseTransactions.length,
+      expenseWithDocumentCount: txWithDocument.size,
       hasOverdueObligation,
       daysUntilNextDeadline,
       hasFilingPack,
@@ -153,9 +152,9 @@ export class TaxSafetyService {
       metrics.monthsWithAnyTransactions / Math.max(1, metrics.monthsElapsedInYear);
 
     let receiptCoverageRatio: number | null = null;
-    if (metrics.highValueTxCount >= 5) {
+    if (metrics.expenseTxCount >= 5) {
       receiptCoverageRatio =
-        metrics.highValueWithDocumentCount / Math.max(1, metrics.highValueTxCount);
+        metrics.expenseWithDocumentCount / Math.max(1, metrics.expenseTxCount);
     }
 
     let score = TAX_SAFETY_MAX_SCORE;
@@ -175,8 +174,8 @@ export class TaxSafetyService {
       reasons.push('MEDIUM_RECORDS_COVERAGE');
     }
 
-    // 3) Receipt coverage on high-value transactions
-    if (metrics.highValueTxCount >= 5 && receiptCoverageRatio !== null) {
+    // 3) Evidence coverage on transactions
+    if (metrics.expenseTxCount >= 5 && receiptCoverageRatio !== null) {
       if (receiptCoverageRatio < 0.5) {
         score -= 20;
         reasons.push('LOW_RECEIPT_COVERAGE');

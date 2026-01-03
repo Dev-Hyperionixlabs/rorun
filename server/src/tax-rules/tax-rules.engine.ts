@@ -142,62 +142,82 @@ export class TaxRulesEngine {
   }
 
   /**
-   * Calculate due date from deadline template
+   * Calculate due dates for a tax year from a deadline template.
+   * For recurring templates (monthly/quarterly), returns one entry per period.
    */
-  calculateDueDate(template: {
+  calculateDueDatesForYear(template: {
     frequency: string;
     dueDayOfMonth?: number | null;
     dueMonth?: number | null;
     dueDay?: number | null;
     offsetDays?: number | null;
-  }, taxYear: number): Date | null {
-    const now = new Date();
-    let dueDate: Date;
+  }, taxYear: number): Array<{ dueDate: Date; periodStart: Date; periodEnd: Date }> {
+    const entries: Array<{ dueDate: Date; periodStart: Date; periodEnd: Date }> = [];
+
+    const applyOffset = (d: Date) => {
+      const due = new Date(d);
+      if (template.offsetDays) {
+        due.setDate(due.getDate() + template.offsetDays);
+      }
+      return due;
+    };
+
+    const yearStart = new Date(taxYear, 0, 1);
+    const yearEnd = new Date(taxYear, 11, 31, 23, 59, 59);
 
     switch (template.frequency) {
       case 'annual':
-        if (template.dueMonth && template.dueDay) {
-          dueDate = new Date(taxYear, template.dueMonth - 1, template.dueDay);
-        } else {
-          return null;
-        }
-        break;
+      case 'one_time': {
+        if (!template.dueMonth || !template.dueDay) return [];
+        const due = applyOffset(new Date(taxYear, template.dueMonth - 1, template.dueDay));
+        entries.push({ dueDate: due, periodStart: yearStart, periodEnd: yearEnd });
+        return entries;
+      }
 
-      case 'quarterly':
-        // For quarterly, dueDayOfMonth applies to end of quarter
-        // Simplified: assume due on last day of quarter month
-        const quarter = Math.floor(now.getMonth() / 3);
-        const quarterEndMonth = (quarter + 1) * 3 - 1; // 2, 5, 8, 11 (0-indexed)
-        const day = template.dueDayOfMonth || 31;
-        dueDate = new Date(taxYear, quarterEndMonth, day);
-        break;
+      case 'monthly': {
+        for (let m = 0; m < 12; m++) {
+          const periodStart = new Date(taxYear, m, 1);
+          const periodEnd = new Date(taxYear, m + 1, 0, 23, 59, 59);
 
-      case 'monthly':
-        if (template.dueDayOfMonth) {
-          dueDate = new Date(taxYear, now.getMonth(), template.dueDayOfMonth);
-        } else {
-          return null;
-        }
-        break;
+          let baseDue: Date | null = null;
+          if (template.dueDayOfMonth) {
+            baseDue = new Date(taxYear, m, template.dueDayOfMonth);
+          } else if (template.offsetDays) {
+            baseDue = new Date(periodEnd);
+          }
+          if (!baseDue) continue;
 
-      case 'one_time':
-        if (template.dueMonth && template.dueDay) {
-          dueDate = new Date(taxYear, template.dueMonth - 1, template.dueDay);
-        } else {
-          return null;
+          const due = applyOffset(baseDue);
+          entries.push({ dueDate: due, periodStart, periodEnd });
         }
-        break;
+        return entries;
+      }
+
+      case 'quarterly': {
+        const quarterEnds = [2, 5, 8, 11]; // Mar, Jun, Sep, Dec (0-indexed)
+        for (let q = 0; q < 4; q++) {
+          const endMonth = quarterEnds[q];
+          const startMonth = q * 3;
+          const periodStart = new Date(taxYear, startMonth, 1);
+          const periodEnd = new Date(taxYear, endMonth + 1, 0, 23, 59, 59);
+
+          let baseDue: Date | null = null;
+          if (template.dueDayOfMonth) {
+            baseDue = new Date(taxYear, endMonth, template.dueDayOfMonth);
+          } else if (template.offsetDays) {
+            baseDue = new Date(periodEnd);
+          }
+          if (!baseDue) continue;
+
+          const due = applyOffset(baseDue);
+          entries.push({ dueDate: due, periodStart, periodEnd });
+        }
+        return entries;
+      }
 
       default:
-        return null;
+        return [];
     }
-
-    // Apply offset
-    if (template.offsetDays) {
-      dueDate.setDate(dueDate.getDate() + template.offsetDays);
-    }
-
-    return dueDate;
   }
 
   /**
@@ -221,14 +241,20 @@ export class TaxRulesEngine {
     key: string;
     title: string;
     frequency: string;
+    dueDate?: Date;
     computedDueDateForYear?: Date;
+    periodStart?: Date;
+    periodEnd?: Date;
     template: any;
   }> {
     const applicable: Array<{
       key: string;
       title: string;
       frequency: string;
+      dueDate?: Date;
       computedDueDateForYear?: Date;
+      periodStart?: Date;
+      periodEnd?: Date;
       template: any;
     }> = [];
 
@@ -241,19 +267,31 @@ export class TaxRulesEngine {
         }
       }
 
-      const dueDate = this.calculateDueDate(template, taxYear);
-      applicable.push({
-        key: template.key,
-        title: template.title,
-        frequency: template.frequency,
-        computedDueDateForYear: dueDate || undefined,
-        template: {
-          dueDayOfMonth: template.dueDayOfMonth,
-          dueMonth: template.dueMonth,
-          dueDay: template.dueDay,
-          offsetDays: template.offsetDays,
-        },
-      });
+      const dueEntries = this.calculateDueDatesForYear(template, taxYear);
+      for (let i = 0; i < dueEntries.length; i++) {
+        const entry = dueEntries[i];
+        const suffix =
+          template.frequency === 'monthly'
+            ? `:${String(i + 1).padStart(2, '0')}`
+            : template.frequency === 'quarterly'
+              ? `:Q${i + 1}`
+              : '';
+        applicable.push({
+          key: `${template.key}${suffix}`,
+          title: template.title,
+          frequency: template.frequency,
+          dueDate: entry.dueDate,
+          computedDueDateForYear: entry.dueDate,
+          periodStart: entry.periodStart,
+          periodEnd: entry.periodEnd,
+          template: {
+            dueDayOfMonth: template.dueDayOfMonth,
+            dueMonth: template.dueMonth,
+            dueDay: template.dueDay,
+            offsetDays: template.offsetDays,
+          },
+        });
+      }
     }
 
     return applicable;
