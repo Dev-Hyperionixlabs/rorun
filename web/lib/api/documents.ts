@@ -1,6 +1,6 @@
 "use client";
 
-import { api } from "./client";
+import { api, API_BASE, authHeaders } from "./client";
 
 export interface Document {
   id: string;
@@ -56,13 +56,53 @@ export async function uploadDocument(
   );
 
   // 2) Upload bytes directly to storage
-  const putRes = await fetch(uploadUrl, {
-    method: "PUT",
-    headers: { "Content-Type": mimeType },
-    body: file,
-  });
-  if (!putRes.ok) {
-    throw new Error("Upload failed. Please try again.");
+  try {
+    const putRes = await fetch(uploadUrl, {
+      method: "PUT",
+      headers: { "Content-Type": mimeType },
+      body: file,
+    });
+    if (!putRes.ok) {
+      throw new Error("Upload failed. Please try again.");
+    }
+  } catch (e: any) {
+    // Common in production with R2/S3-compatible buckets when CORS isn't configured.
+    // Fallback to server-side upload to avoid browser-to-storage CORS preflight.
+    if (!API_BASE) {
+      throw new Error("API is not configured.");
+    }
+    const form = new FormData();
+    form.append("file", file);
+    if (relatedTransactionId) form.append("relatedTransactionId", relatedTransactionId);
+    // Heuristic type
+    const docType =
+      mimeType === "application/pdf" && /statement|bank/i.test(file.name) ? "bank_statement" : "receipt";
+    form.append("type", docType);
+
+    const res = await fetch(`${API_BASE.replace(/\/+$/, "")}/businesses/${businessId}/documents/upload`, {
+      method: "POST",
+      headers: {
+        ...authHeaders(),
+      },
+      body: form,
+      credentials: "include",
+    });
+    if (!res.ok) {
+      const text = await res.text().catch(() => "");
+      throw new Error(text || "Upload failed. Please try again.");
+    }
+    const doc = await res.json();
+    return {
+      ...doc,
+      url: doc.url || doc.fileUrl || doc.viewUrl || doc.storageUrl,
+      fileUrl: doc.fileUrl || doc.url || doc.viewUrl || doc.storageUrl,
+      fileName: doc.fileName || doc.name || doc.originalName,
+      type: doc.type || doc.fileType || doc.documentType,
+      fileType: doc.fileType || doc.type,
+      uploadedAt: doc.uploadedAt || doc.createdAt,
+      createdAt: doc.createdAt || doc.uploadedAt,
+      ocrStatus: doc.ocrStatus || doc.status,
+    };
   }
 
   // 3) Register document with API (server verifies object exists + signature)

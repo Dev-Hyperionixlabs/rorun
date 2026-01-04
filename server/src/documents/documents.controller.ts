@@ -10,6 +10,8 @@ import {
   UseGuards,
   Request,
 } from '@nestjs/common';
+import { FileInterceptor } from '@nestjs/platform-express';
+import { UseInterceptors, UploadedFile, BadRequestException } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiBearerAuth, ApiParam, ApiQuery } from '@nestjs/swagger';
 import { DocumentsService } from './documents.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
@@ -50,6 +52,41 @@ export class DocumentsController {
     @Body() dto: CreateDocumentDto,
   ) {
     return this.documentsService.create(businessId, req.user.id, dto);
+  }
+
+  @Post('upload')
+  @UseGuards(BusinessRoleGuard)
+  @RequireBusinessRoles('owner', 'member', 'accountant')
+  @UseInterceptors(
+    FileInterceptor('file', {
+      limits: { fileSize: 10 * 1024 * 1024 }, // 10MB
+    }),
+  )
+  @ApiOperation({
+    summary:
+      'Upload a document via API (fallback when direct-to-storage signed upload is blocked by CORS/content filters)',
+  })
+  async uploadViaApi(
+    @Param('businessId') businessId: string,
+    @Request() req,
+    @UploadedFile() file?: Express.Multer.File,
+    @Body() body?: { relatedTransactionId?: string; type?: string },
+  ) {
+    if (!file?.buffer) {
+      throw new BadRequestException({ code: 'UPLOAD_MISSING_FILE', message: 'Missing file' });
+    }
+    const mimeType = file.mimetype;
+    const filename = file.originalname || 'upload';
+    const relatedTransactionId = body?.relatedTransactionId || undefined;
+    const type = body?.type || undefined;
+    return this.documentsService.uploadViaApi(businessId, req.user.id, {
+      filename,
+      mimeType,
+      size: file.size,
+      buffer: file.buffer,
+      relatedTransactionId,
+      type,
+    });
   }
 
   @Get()

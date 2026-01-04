@@ -69,6 +69,79 @@ export class DocumentsService {
     };
   }
 
+  async uploadViaApi(
+    businessId: string,
+    userId: string,
+    input: {
+      filename: string;
+      mimeType: string;
+      size: number;
+      buffer: Buffer;
+      relatedTransactionId?: string;
+      type?: string;
+    },
+  ) {
+    await this.businessesService.findOne(businessId, userId);
+
+    if (!this.ALLOWED_MIME.has(input.mimeType)) {
+      throw new BadRequestException({
+        code: 'UPLOAD_TYPE_NOT_ALLOWED',
+        message: 'File type not allowed. Allowed: PDF, JPG, PNG',
+      });
+    }
+    if (input.size > this.MAX_UPLOAD_BYTES) {
+      throw new BadRequestException({
+        code: 'UPLOAD_TOO_LARGE',
+        message: `File too large. Max size is ${this.MAX_UPLOAD_BYTES} bytes`,
+      });
+    }
+
+    const header = input.buffer.subarray(0, 16);
+    if (!this.verifyMagicBytes(input.mimeType, header)) {
+      throw new BadRequestException({
+        code: 'UPLOAD_TYPE_NOT_ALLOWED',
+        message: 'File signature does not match allowed types',
+      });
+    }
+
+    const ext = this.extForMime(input.mimeType);
+    const safeId = crypto.randomUUID();
+    const key = `businesses/${businessId}/documents/${safeId}.${ext}`;
+
+    // Upload to storage from server side (no browser CORS involved)
+    await this.storageService.uploadFile(input.buffer, key, input.mimeType);
+
+    const scan = await scanUploadedObject(key);
+    if (!scan.ok) {
+      // Best effort cleanup
+      await this.storageService.deleteFile(key).catch(() => {});
+      throw new BadRequestException({
+        code: 'UPLOAD_REJECTED',
+        message: ('reason' in scan ? scan.reason : undefined) || 'Upload rejected',
+      });
+    }
+
+    const docType = input.type || (input.mimeType === 'application/pdf' ? 'bank_statement' : 'receipt');
+
+    const document = await this.prisma.document.create({
+      data: {
+        businessId,
+        type: docType,
+        storageUrl: key,
+        mimeType: input.mimeType,
+        size: input.size,
+        relatedTransactionId: input.relatedTransactionId || null,
+      } as any,
+    });
+
+    // Enqueue OCR job if it's an image
+    if (input.mimeType?.startsWith('image/')) {
+      this.aiService.processDocument(document.id).catch(console.error);
+    }
+
+    return document;
+  }
+
   async create(businessId: string, userId: string, data: CreateDocumentDto) {
     await this.businessesService.findOne(businessId, userId);
 
