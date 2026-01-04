@@ -9,7 +9,8 @@ import { Button } from "@/components/ui/button";
 import { Select } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/components/ui/toast";
-import { invoicesApi, Invoice, InvoiceStatus } from "@/lib/api/invoices";
+import { invoicesApi, Invoice, InvoiceStatus, InvoiceTemplateKey } from "@/lib/api/invoices";
+import { getBusiness } from "@/lib/api/businesses";
 import { ArrowLeft, Loader2 } from "lucide-react";
 
 function formatMoney(amount: number | null | undefined, currency = "NGN") {
@@ -28,9 +29,12 @@ export default function InvoiceDetailPage() {
 
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [downloading, setDownloading] = useState(false);
   const [invoice, setInvoice] = useState<Invoice | null>(null);
+  const [business, setBusiness] = useState<any>(null);
   const [notes, setNotes] = useState("");
   const [status, setStatus] = useState<InvoiceStatus>("draft");
+  const [templateKey, setTemplateKey] = useState<string>("");
 
   const load = async () => {
     if (!businessId) return;
@@ -40,6 +44,15 @@ export default function InvoiceDetailPage() {
       setInvoice(data);
       setNotes(data.notes || "");
       setStatus(data.status);
+      setTemplateKey((data as any).templateKey || "");
+
+      // Fetch business invoice/payment defaults (best-effort; use context if available)
+      try {
+        const b = await getBusiness(businessId);
+        setBusiness(b);
+      } catch {
+        setBusiness(businesses.find((x) => x.id === businessId) || businesses[0] || null);
+      }
     } catch (e: any) {
       addToast({ title: "Couldn’t load invoice", description: e?.message || "", variant: "error" });
       setInvoice(null);
@@ -56,6 +69,7 @@ export default function InvoiceDetailPage() {
   const totals = useMemo(() => {
     const subtotal = Number(invoice?.subtotalAmount ?? 0);
     const total = Number(invoice?.totalAmount ?? subtotal);
+    const tax = Number(invoice?.taxAmount ?? 0);
     return { subtotal, total };
   }, [invoice]);
 
@@ -66,6 +80,7 @@ export default function InvoiceDetailPage() {
       const updated = await invoicesApi.updateInvoice(businessId, invoice.id, {
         status,
         notes: notes.trim() ? notes.trim() : null,
+        templateKey: templateKey ? (templateKey as InvoiceTemplateKey) : null,
       });
       setInvoice(updated);
       addToast({ title: "Saved", variant: "success" });
@@ -88,6 +103,27 @@ export default function InvoiceDetailPage() {
       addToast({ title: "Couldn’t mark as paid", description: e?.message || "Please try again.", variant: "error" });
     } finally {
       setSaving(false);
+    }
+  };
+
+  const handleDownloadPdf = async () => {
+    if (!businessId || !invoice) return;
+    setDownloading(true);
+    try {
+      const blob = await invoicesApi.downloadInvoicePdf(businessId, invoice.id);
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `Invoice-${invoice.invoiceNumber || invoice.id}.pdf`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+      addToast({ title: "Downloading PDF…", variant: "success" });
+    } catch (e: any) {
+      addToast({ title: "PDF download failed", description: e?.message || "Please try again.", variant: "error" });
+    } finally {
+      setDownloading(false);
     }
   };
 
@@ -115,6 +151,9 @@ export default function InvoiceDetailPage() {
       : invoice.status === "draft"
       ? "bg-slate-100 text-slate-700"
       : "bg-amber-100 text-amber-700";
+
+  const showPayment =
+    !!(business?.paymentBankName || business?.paymentAccountName || business?.paymentAccountNumber || business?.paymentInstructionsNote);
 
   return (
     <div className="space-y-4">
@@ -182,6 +221,14 @@ export default function InvoiceDetailPage() {
               <span className="text-slate-600">Subtotal</span>
               <span className="font-semibold text-slate-900">{formatMoney(totals.subtotal, invoice.currency)}</span>
             </div>
+            {(invoice.taxType || "none") !== "none" && (
+              <div className="flex items-center justify-between text-sm">
+                <span className="text-slate-600">
+                  {(invoice.taxLabel || "Tax")}{invoice.taxRate ? ` (${Number(invoice.taxRate) * 100}%)` : ""}
+                </span>
+                <span className="font-semibold text-slate-900">{formatMoney(invoice.taxAmount || 0, invoice.currency)}</span>
+              </div>
+            )}
             <div className="flex items-center justify-between text-sm">
               <span className="text-slate-600">Total</span>
               <span className="font-semibold text-slate-900">{formatMoney(totals.total, invoice.currency)}</span>
@@ -189,6 +236,34 @@ export default function InvoiceDetailPage() {
           </div>
         </CardContent>
       </Card>
+
+      {showPayment && (
+        <Card className="bg-white">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm font-semibold text-slate-900">Payment instructions</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-2">
+            {business?.paymentBankName && (
+              <p className="text-sm text-slate-700">
+                <span className="font-semibold">Bank:</span> {business.paymentBankName}
+              </p>
+            )}
+            {business?.paymentAccountName && (
+              <p className="text-sm text-slate-700">
+                <span className="font-semibold">Account name:</span> {business.paymentAccountName}
+              </p>
+            )}
+            {business?.paymentAccountNumber && (
+              <p className="text-sm text-slate-700">
+                <span className="font-semibold">Account number:</span> {business.paymentAccountNumber}
+              </p>
+            )}
+            {business?.paymentInstructionsNote && (
+              <p className="text-sm text-slate-600">{business.paymentInstructionsNote}</p>
+            )}
+          </CardContent>
+        </Card>
+      )}
 
       <Card className="bg-white">
         <CardHeader className="pb-2">
@@ -205,6 +280,20 @@ export default function InvoiceDetailPage() {
                 { value: "sent", label: "Sent" },
                 { value: "paid", label: "Paid" },
                 { value: "cancelled", label: "Cancelled" },
+              ]}
+            />
+          </div>
+
+          <div className="space-y-1">
+            <label className="text-sm font-medium text-slate-800">Template</label>
+            <Select
+              value={templateKey}
+              onChange={(v) => setTemplateKey(v)}
+              options={[
+                { value: "", label: "Use business default" },
+                { value: "classic", label: "Classic" },
+                { value: "modern", label: "Modern" },
+                { value: "minimal", label: "Minimal" },
               ]}
             />
           </div>
@@ -230,6 +319,9 @@ export default function InvoiceDetailPage() {
                 Mark as paid
               </Button>
             )}
+            <Button variant="secondary" className="rounded-full" onClick={handleDownloadPdf} loading={downloading}>
+              Download PDF
+            </Button>
           </div>
         </CardContent>
       </Card>

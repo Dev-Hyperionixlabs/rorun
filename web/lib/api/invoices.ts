@@ -3,6 +3,8 @@
 import { api as http } from "./client";
 
 export type InvoiceStatus = "draft" | "sent" | "paid" | "cancelled";
+export type InvoiceTaxType = "none" | "vat" | "wht" | "custom";
+export type InvoiceTemplateKey = "classic" | "modern" | "minimal";
 
 export interface Client {
   id: string;
@@ -44,6 +46,11 @@ export interface Invoice {
   dueDate?: string | null;
   status: InvoiceStatus;
   subtotalAmount?: number | null;
+  taxType?: InvoiceTaxType | null;
+  taxLabel?: string | null;
+  taxRate?: number | null; // decimal in [0,1]
+  taxAmount?: number | null;
+  templateKey?: InvoiceTemplateKey | null;
   totalAmount: number;
   currency: string;
   notes?: string | null;
@@ -81,6 +88,10 @@ export interface CreateInvoiceInput {
   dueDate?: string | null; // ISO date
   currency?: string;
   notes?: string | null;
+  taxType?: InvoiceTaxType | null;
+  taxRate?: number | null; // decimal in [0,1]
+  taxLabel?: string | null;
+  templateKey?: InvoiceTemplateKey | null;
   items: CreateInvoiceItemInput[];
 }
 
@@ -91,7 +102,29 @@ export interface UpdateInvoiceInput {
   dueDate?: string | null;
   status?: InvoiceStatus;
   notes?: string | null;
+  taxType?: InvoiceTaxType | null;
+  taxRate?: number | null; // decimal in [0,1]
+  taxLabel?: string | null;
+  templateKey?: InvoiceTemplateKey | null;
   items?: CreateInvoiceItemInput[];
+}
+
+export async function downloadInvoicePdf(businessId: string, invoiceId: string): Promise<Blob> {
+  const { API_BASE, authHeaders } = await import("./client");
+  if (!API_BASE) throw new Error("API is not configured.");
+  const base = API_BASE.replace(/\/+$/, "");
+  const res = await fetch(`${base}/businesses/${businessId}/invoices/${invoiceId}/pdf`, {
+    method: "GET",
+    headers: {
+      ...authHeaders(),
+    },
+    credentials: "include",
+  });
+  if (!res.ok) {
+    const text = await res.text().catch(() => "");
+    throw new Error(text || `Failed to download PDF (${res.status})`);
+  }
+  return await res.blob();
 }
 
 export async function listClients(businessId: string): Promise<Client[]> {
@@ -141,6 +174,7 @@ export const invoicesApi = {
   createInvoice,
   updateInvoice,
   markInvoicePaid,
+  downloadInvoicePdf,
 };
 
 

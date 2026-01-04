@@ -15,7 +15,12 @@ import {
   CreateInvoiceItemInput,
   Job,
 } from "@/lib/api/invoices";
+import { getBusiness } from "@/lib/api/businesses";
 import { Plus, Trash2 } from "lucide-react";
+
+function round2(n: number) {
+  return Math.round((n + Number.EPSILON) * 100) / 100;
+}
 
 export default function NewInvoicePage() {
   return (
@@ -30,10 +35,12 @@ function NewInvoiceInner() {
   const { addToast } = useToast();
   const { businesses, currentBusinessId } = useMockApi();
   const businessId = currentBusinessId || businesses[0]?.id || null;
+  const businessFromContext = businesses.find((b) => b.id === businessId) || businesses[0];
 
   const [loading, setLoading] = useState(true);
   const [clients, setClients] = useState<Client[]>([]);
   const [jobs, setJobs] = useState<Job[]>([]);
+  const [businessDefaults, setBusinessDefaults] = useState<any>(null);
 
   const [clientId, setClientId] = useState<string>("");
   const [jobId, setJobId] = useState<string>("");
@@ -41,6 +48,12 @@ function NewInvoiceInner() {
   const [dueDate, setDueDate] = useState<string>("");
   const [currency] = useState("NGN");
   const [notes, setNotes] = useState("");
+
+  // Tax + template (prefilled from business defaults)
+  const [taxType, setTaxType] = useState<"none" | "vat" | "wht" | "custom">("none");
+  const [taxRatePct, setTaxRatePct] = useState<string>("");
+  const [taxLabel, setTaxLabel] = useState<string>("");
+  const [templateKey, setTemplateKey] = useState<"classic" | "modern" | "minimal">("classic");
 
   const [newClientName, setNewClientName] = useState("");
   const [creatingClient, setCreatingClient] = useState(false);
@@ -54,6 +67,18 @@ function NewInvoiceInner() {
     return items.reduce((sum, it) => sum + (Number(it.quantity) || 0) * (Number(it.unitPrice) || 0), 0);
   }, [items]);
 
+  const taxPreview = useMemo(() => {
+    if (taxType === "none") return { taxRate: null as number | null, taxAmount: 0, total: subtotal };
+    const pct = Number((taxRatePct || "").trim());
+    if (!Number.isFinite(pct) || pct < 0 || pct > 100) {
+      return { taxRate: null as number | null, taxAmount: 0, total: subtotal };
+    }
+    const rate = pct / 100;
+    const taxAmount = round2(subtotal * rate);
+    const total = round2(subtotal + taxAmount);
+    return { taxRate: rate, taxAmount, total };
+  }, [subtotal, taxType, taxRatePct]);
+
   const isValid = useMemo(() => {
     const hasClient = !!clientId;
     const hasLine = items.some((i) => i.description.trim() && Number(i.quantity) > 0 && Number(i.unitPrice) >= 0);
@@ -64,6 +89,14 @@ function NewInvoiceInner() {
     if (!businessId) return;
     setLoading(true);
     try {
+      // Load business defaults (tax + template + payment info) – best-effort
+      try {
+        const b = await getBusiness(businessId);
+        setBusinessDefaults(b);
+      } catch {
+        setBusinessDefaults(businessFromContext || null);
+      }
+
       const [c, j] = await Promise.all([
         invoicesApi.listClients(businessId),
         invoicesApi.listJobs(businessId),
@@ -85,6 +118,31 @@ function NewInvoiceInner() {
     load().catch(() => {});
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [businessId]);
+
+  // Prefill defaults once business is available
+  useEffect(() => {
+    const b: any = businessDefaults || businessFromContext;
+    if (!b) return;
+
+    const rawTaxType = (b.defaultTaxType || (b.vatRegistered ? "vat" : "none")).toString().toLowerCase();
+    const nextTaxType: any = ["none", "vat", "wht", "custom"].includes(rawTaxType) ? rawTaxType : "none";
+    setTaxType(nextTaxType);
+
+    const rate = b.defaultTaxRate;
+    if (rate !== null && rate !== undefined && Number(rate) > 0) {
+      setTaxRatePct(String(Number(rate) * 100));
+    } else if (nextTaxType !== "none" && b.vatRegistered) {
+      setTaxRatePct("7.5");
+    }
+
+    const label = b.defaultTaxLabel || (b.vatRegistered ? "VAT" : "");
+    setTaxLabel(String(label || ""));
+
+    const rawTemplate = (b.invoiceTemplateKey || "classic").toString().toLowerCase();
+    const nextTemplate: any = ["classic", "modern", "minimal"].includes(rawTemplate) ? rawTemplate : "classic";
+    setTemplateKey(nextTemplate);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [businessDefaults]);
 
   const filteredJobs = useMemo(() => {
     if (!clientId) return jobs;
@@ -120,6 +178,10 @@ function NewInvoiceInner() {
         dueDate: dueDate || null,
         currency,
         notes: notes.trim() ? notes.trim() : null,
+        taxType,
+        taxRate: taxType === "none" ? null : taxPreview.taxRate,
+        taxLabel: taxType === "none" ? null : (taxLabel.trim() || null),
+        templateKey,
         items: items
           .filter((i) => i.description.trim())
           .map((i) => ({
@@ -296,9 +358,61 @@ function NewInvoiceInner() {
             Add line item
           </Button>
 
-          <div className="rounded-xl border border-slate-200 bg-slate-50 p-3 flex items-center justify-between">
-            <p className="text-sm font-semibold text-slate-900">Subtotal</p>
-            <p className="text-sm font-semibold text-slate-900">₦{subtotal.toLocaleString()}</p>
+          <div className="rounded-xl border border-slate-200 bg-white p-3 space-y-3">
+            <p className="text-xs font-semibold text-slate-800">Tax</p>
+            <Select
+              value={taxType}
+              onChange={(v) => setTaxType(v as any)}
+              options={[
+                { value: "none", label: "No tax" },
+                { value: "vat", label: "VAT" },
+                { value: "wht", label: "WHT" },
+                { value: "custom", label: "Custom" },
+              ]}
+            />
+            {taxType !== "none" && (
+              <div className="grid gap-3 sm:grid-cols-2">
+                <div className="space-y-1">
+                  <label className="text-sm font-medium text-slate-800">Tax rate (%)</label>
+                  <Input
+                    inputMode="decimal"
+                    value={taxRatePct}
+                    onChange={(e) => setTaxRatePct(e.target.value)}
+                    placeholder="e.g. 7.5"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-sm font-medium text-slate-800">Tax label</label>
+                  <Input
+                    value={taxLabel}
+                    onChange={(e) => setTaxLabel(e.target.value)}
+                    placeholder={taxType === "vat" ? "VAT" : taxType === "wht" ? "WHT" : "Tax"}
+                  />
+                </div>
+              </div>
+            )}
+          </div>
+
+          <div className="rounded-xl border border-slate-200 bg-slate-50 p-3 space-y-1">
+            <div className="flex items-center justify-between text-sm">
+              <span className="text-slate-600">Subtotal</span>
+              <span className="font-semibold text-slate-900">₦{round2(subtotal).toLocaleString()}</span>
+            </div>
+            {taxType !== "none" && (
+              <div className="flex items-center justify-between text-sm">
+                <span className="text-slate-600">
+                  {(taxLabel || "Tax").trim() || "Tax"} ({(Number(taxRatePct) || 0).toString()}%)
+                </span>
+                <span className="font-semibold text-slate-900">₦{round2(taxPreview.taxAmount).toLocaleString()}</span>
+              </div>
+            )}
+            <div className="flex items-center justify-between text-sm">
+              <span className="text-slate-600">Total</span>
+              <span className="font-semibold text-slate-900">₦{round2(taxPreview.total).toLocaleString()}</span>
+            </div>
+            <p className="text-[11px] text-slate-500">
+              Totals are previewed here; the server recomputes totals on save.
+            </p>
           </div>
 
           <div className="flex gap-2">

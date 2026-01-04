@@ -1,9 +1,11 @@
-import { Controller, Get, Post, Put, Body, Param, UseGuards, Request } from '@nestjs/common';
+import { Controller, Get, Post, Put, Body, Param, UseGuards, Request, Res } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiBearerAuth, ApiParam } from '@nestjs/swagger';
 import { InvoicesService } from './invoices.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { BusinessRoleGuard, RequireBusinessRoles } from '../auth/guards/business-role.guard';
 import { CreateInvoiceDto, UpdateInvoiceDto } from './dto/invoice.dto';
+import { Response } from 'express';
+import { renderInvoicePdf } from './invoice-pdf';
 
 @ApiTags('invoices')
 @Controller('businesses/:businessId/invoices')
@@ -36,6 +38,72 @@ export class InvoicesController {
   @RequireBusinessRoles('owner', 'member', 'accountant')
   async findOne(@Param('id') id: string, @Request() req) {
     return this.invoicesService.findOne(id, req.user.id);
+  }
+
+  @Get(':id/pdf')
+  @ApiParam({ name: 'id', description: 'Invoice ID' })
+  @ApiOperation({ summary: 'Download invoice PDF' })
+  @RequireBusinessRoles('owner', 'member', 'accountant')
+  async downloadPdf(
+    @Param('businessId') businessId: string,
+    @Param('id') id: string,
+    @Request() req,
+    @Res() res: Response,
+  ) {
+    const data = await this.invoicesService.getInvoicePdfData(businessId, req.user.id, id);
+    const business = data.business;
+    const invoice = data;
+    const templateKey = ((invoice.templateKey || business.invoiceTemplateKey || 'classic') as string).toLowerCase();
+    const safeTemplate =
+      templateKey === 'modern' || templateKey === 'minimal' || templateKey === 'classic' ? templateKey : 'classic';
+
+    const buf = await renderInvoicePdf({
+      templateKey: safeTemplate as any,
+      business: {
+        name: business.name,
+        invoiceDisplayName: business.invoiceDisplayName,
+        invoiceLogoUrl: business.invoiceLogoUrl,
+        invoiceAddressLine1: business.invoiceAddressLine1,
+        invoiceAddressLine2: business.invoiceAddressLine2,
+        invoiceCity: business.invoiceCity,
+        invoiceState: business.invoiceState,
+        invoiceCountry: business.invoiceCountry,
+        invoicePostalCode: business.invoicePostalCode,
+        invoiceFooterNote: business.invoiceFooterNote,
+        paymentBankName: business.paymentBankName,
+        paymentAccountName: business.paymentAccountName,
+        paymentAccountNumber: business.paymentAccountNumber,
+        paymentInstructionsNote: business.paymentInstructionsNote,
+      },
+      invoice: {
+        invoiceNumber: invoice.invoiceNumber,
+        issueDate: new Date(invoice.issueDate),
+        dueDate: invoice.dueDate ? new Date(invoice.dueDate) : null,
+        currency: invoice.currency || 'NGN',
+        notes: invoice.notes || null,
+        subtotalAmount: Number(invoice.subtotalAmount || 0),
+        taxType: invoice.taxType || 'none',
+        taxLabel: invoice.taxLabel || null,
+        taxRate: invoice.taxRate !== null && invoice.taxRate !== undefined ? Number(invoice.taxRate) : null,
+        taxAmount: invoice.taxAmount !== null && invoice.taxAmount !== undefined ? Number(invoice.taxAmount) : null,
+        totalAmount: Number(invoice.totalAmount || 0),
+      },
+      client: invoice.client
+        ? { name: invoice.client.name, email: invoice.client.email, phone: invoice.client.phone }
+        : null,
+      job: invoice.job ? { title: invoice.job.title } : null,
+      items: (invoice.items || []).map((it: any) => ({
+        description: it.description,
+        quantity: Number(it.quantity),
+        unitPrice: Number(it.unitPrice),
+        amount: Number(it.amount),
+      })),
+    });
+
+    const filename = `Invoice-${invoice.invoiceNumber || invoice.id}.pdf`;
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+    res.status(200).send(buf);
   }
 
   @Put(':id')

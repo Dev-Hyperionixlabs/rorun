@@ -563,6 +563,13 @@ model Invoice {
   customerContact String? // legacy (use clientId)
   status        String   @default("draft") // draft, sent, paid, cancelled
   subtotalAmount Decimal? @db.Decimal(15, 2)
+  // Invoice-level tax (computed server-side; supports VAT/WHT/Custom)
+  taxType       String?  @default("none") // none | vat | wht | custom
+  taxLabel      String?
+  taxRate       Decimal? @db.Decimal(6, 4)
+  taxAmount     Decimal? @db.Decimal(15, 2)
+  // Optional per-invoice template override (defaults to business.invoiceTemplateKey)
+  templateKey   String?
   totalAmount   Decimal  @db.Decimal(15, 2)
   currency      String   @default("NGN")
   notes         String?  @db.Text
