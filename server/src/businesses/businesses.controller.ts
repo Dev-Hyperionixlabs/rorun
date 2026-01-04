@@ -1,8 +1,9 @@
-import { Controller, Get, Post, Put, Body, Param, UseGuards, Request } from '@nestjs/common';
+import { Controller, Get, Post, Put, Body, Param, UseGuards, Request, UseInterceptors, UploadedFile } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiBearerAuth, ApiParam } from '@nestjs/swagger';
 import { BusinessesService } from './businesses.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { CreateBusinessDto, UpdateBusinessDto } from './dto/business.dto';
+import { FileInterceptor } from '@nestjs/platform-express';
 
 @ApiTags('businesses')
 @Controller('businesses')
@@ -46,6 +47,18 @@ export class BusinessesController {
     @Body() body: { mimeType: string },
   ) {
     return this.businessesService.createInvoiceLogoUploadUrl(id, req.user.id, body?.mimeType);
+  }
+
+  @Post(':id/invoice-logo/upload')
+  @ApiParam({ name: 'id', description: 'Business ID' })
+  @ApiOperation({ summary: 'Upload invoice logo via API (CORS-safe fallback)' })
+  @UseInterceptors(FileInterceptor('file'))
+  async uploadInvoiceLogo(
+    @Param('id') id: string,
+    @Request() req,
+    @UploadedFile() file: Express.Multer.File,
+  ) {
+    return this.businessesService.uploadInvoiceLogoViaApi(id, req.user.id, file);
   }
 
   @Get(':id/invoice-logo-url')

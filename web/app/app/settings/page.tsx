@@ -166,13 +166,13 @@ function PlanSettingsSection() {
       // Prefer real billing if available; otherwise fall back to server-side plan switch.
       if (id !== "free") {
         try {
-          const { createCheckoutSession } = await import("@/lib/api/billing");
-          const { authorizationUrl } = await createCheckoutSession(business.id, id);
+        const { createCheckoutSession } = await import("@/lib/api/billing");
+        const { authorizationUrl } = await createCheckoutSession(business.id, id);
           if (authorizationUrl) {
-            window.location.href = authorizationUrl;
+        window.location.href = authorizationUrl;
             return;
-          }
-        } catch (e: any) {
+      }
+    } catch (e: any) {
           // billing not configured or failed; fall back to direct plan change
           console.warn("Billing checkout failed, using direct plan change:", e?.message);
           usedDirect = true;
@@ -405,27 +405,73 @@ function ProfileSettingsSection() {
 }
 
 function WorkspaceSettingsSection() {
-  const { businesses, updateBusiness } = useMockApi();
-  const business = businesses[0];
+  const { businesses, currentBusinessId, updateBusiness } = useMockApi();
+  const business = businesses.find((b) => b.id === currentBusinessId) || businesses[0];
   const { addToast } = useToast();
-  const [name, setName] = useState(business?.name || "");
+  const [name, setName] = useState("");
   const [taxYear, setTaxYear] = useState(new Date().getFullYear());
   const [currency] = useState("NGN");
   const [profile, setProfile] = useState(() => ({
-    vatRegistered: !!(business as any)?.vatRegistered,
-    annualTurnoverNGN: (business as any)?.annualTurnoverNGN ?? "",
-    fixedAssetsNGN: (business as any)?.fixedAssetsNGN ?? "",
-    employeeCount: (business as any)?.employeeCount ?? "",
-    accountingYearEndMonth: (business as any)?.accountingYearEndMonth ?? "",
-    accountingYearEndDay: (business as any)?.accountingYearEndDay ?? "",
-    isProfessionalServices: !!(business as any)?.isProfessionalServices,
-    claimsTaxIncentives: !!(business as any)?.claimsTaxIncentives,
-    isNonResident: !!(business as any)?.isNonResident,
-    sellsIntoNigeria: !!(business as any)?.sellsIntoNigeria,
-    einvoicingEnabled: !!(business as any)?.einvoicingEnabled,
+    vatRegistered: false,
+    annualTurnoverNGN: "",
+    fixedAssetsNGN: "",
+    employeeCount: "",
+    accountingYearEndMonth: "",
+    accountingYearEndDay: "",
+    isProfessionalServices: false,
+    claimsTaxIncentives: false,
+    isNonResident: false,
+    sellsIntoNigeria: false,
+    einvoicingEnabled: false,
   }));
 
-  const [invoiceConfig, setInvoiceConfig] = useState(() => {
+  const [invoiceConfig, setInvoiceConfig] = useState(() => ({
+    invoiceDisplayName: "",
+    invoiceLogoUrl: "",
+    invoiceAddressLine1: "",
+    invoiceAddressLine2: "",
+    invoiceCity: "",
+    invoiceState: "",
+    invoiceCountry: "Nigeria",
+    invoicePostalCode: "",
+    invoiceFooterNote: "",
+    invoiceTemplateKey: "classic",
+    paymentBankName: "",
+    paymentAccountName: "",
+    paymentAccountNumber: "",
+    paymentInstructionsNote: "",
+    defaultTaxType: "none",
+    defaultTaxRatePct: "",
+    defaultTaxLabel: "",
+  }));
+
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [savingInvoice, setSavingInvoice] = useState(false);
+  const [invoiceError, setInvoiceError] = useState<string | null>(null);
+  const [logoFile, setLogoFile] = useState<File | null>(null);
+  const [logoPreviewUrl, setLogoPreviewUrl] = useState<string | null>(null);
+  const [uploadingLogo, setUploadingLogo] = useState(false);
+  const [loadingStoredLogo, setLoadingStoredLogo] = useState(false);
+
+  // Keep form state in sync with the selected workspace (fixes "resets" caused by using businesses[0]).
+  useEffect(() => {
+    if (!business) return;
+    setName(business?.name || "");
+    setProfile({
+      vatRegistered: !!(business as any)?.vatRegistered,
+      annualTurnoverNGN: (business as any)?.annualTurnoverNGN ?? "",
+      fixedAssetsNGN: (business as any)?.fixedAssetsNGN ?? "",
+      employeeCount: (business as any)?.employeeCount ?? "",
+      accountingYearEndMonth: (business as any)?.accountingYearEndMonth ?? "",
+      accountingYearEndDay: (business as any)?.accountingYearEndDay ?? "",
+      isProfessionalServices: !!(business as any)?.isProfessionalServices,
+      claimsTaxIncentives: !!(business as any)?.claimsTaxIncentives,
+      isNonResident: !!(business as any)?.isNonResident,
+      sellsIntoNigeria: !!(business as any)?.sellsIntoNigeria,
+      einvoicingEnabled: !!(business as any)?.einvoicingEnabled,
+    });
+
     const vatRegistered = !!(business as any)?.vatRegistered;
     const defaultTaxType = (business as any)?.defaultTaxType ?? (vatRegistered ? "vat" : "none");
     const defaultTaxRate = (business as any)?.defaultTaxRate;
@@ -437,7 +483,7 @@ function WorkspaceSettingsSection() {
         : String(Number(defaultTaxRate) * 100);
     const defaultTaxLabel = (business as any)?.defaultTaxLabel ?? (vatRegistered ? "VAT" : "");
 
-    return {
+    setInvoiceConfig({
       invoiceDisplayName: (business as any)?.invoiceDisplayName ?? "",
       invoiceLogoUrl: (business as any)?.invoiceLogoUrl ?? "",
       invoiceAddressLine1: (business as any)?.invoiceAddressLine1 ?? "",
@@ -455,17 +501,13 @@ function WorkspaceSettingsSection() {
       defaultTaxType,
       defaultTaxRatePct,
       defaultTaxLabel,
-    };
-  });
+    } as any);
 
-  const [saving, setSaving] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [savingInvoice, setSavingInvoice] = useState(false);
-  const [invoiceError, setInvoiceError] = useState<string | null>(null);
-  const [logoFile, setLogoFile] = useState<File | null>(null);
-  const [logoPreviewUrl, setLogoPreviewUrl] = useState<string | null>(null);
-  const [uploadingLogo, setUploadingLogo] = useState(false);
-  const [loadingStoredLogo, setLoadingStoredLogo] = useState(false);
+    // reset local upload state when switching workspaces
+    setLogoFile(null);
+    setLogoPreviewUrl(null);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [business?.id]);
 
   if (!business) {
     return (
@@ -538,13 +580,35 @@ function WorkspaceSettingsSection() {
       const { uploadUrl, key } = (await initRes.json()) as { uploadUrl: string; key: string };
 
       // 2) PUT to storage (may still be blocked by CORS in some environments; if so, fall back to URL input)
-      const putRes = await fetch(uploadUrl, { method: "PUT", headers: { "Content-Type": mt }, body: logoFile });
-      if (!putRes.ok) throw new Error("Logo upload failed. Please try again.");
+      try {
+        const putRes = await fetch(uploadUrl, { method: "PUT", headers: { "Content-Type": mt }, body: logoFile });
+        if (!putRes.ok) throw new Error("PUT failed");
 
-      // 3) Persist logo reference on business (store key in invoiceLogoUrl; API can resolve signed view URL)
-      setInvoiceConfig((p) => ({ ...p, invoiceLogoUrl: key }));
-      setLogoFile(null);
-      addToast({ title: "Logo uploaded", description: "Don’t forget to Save invoice settings.", variant: "success" });
+        // 3) Persist immediately so refresh shows it
+        await updateBusiness(business.id, { invoiceLogoUrl: key } as any);
+        setInvoiceConfig((p) => ({ ...p, invoiceLogoUrl: key }));
+        setLogoFile(null);
+        addToast({ title: "Logo saved", description: "Your invoice logo was updated.", variant: "success" });
+      } catch (putErr) {
+        // 2b) CORS-safe fallback: upload via API
+        const form = new FormData();
+        form.append("file", logoFile);
+        const res = await fetch(`${base}/businesses/${business.id}/invoice-logo/upload`, {
+          method: "POST",
+          headers: { ...authHeaders() },
+          credentials: "include",
+          body: form,
+        });
+        if (!res.ok) {
+          const txt = await res.text().catch(() => "");
+          throw new Error(txt || "Logo upload failed (CORS). Please try again.");
+        }
+        const data = (await res.json()) as { key: string };
+        // Endpoint already persists on the business; keep local form in sync
+        setInvoiceConfig((p) => ({ ...p, invoiceLogoUrl: data.key }));
+        setLogoFile(null);
+        addToast({ title: "Logo saved", description: "Your invoice logo was updated.", variant: "success" });
+      }
     } catch (e: any) {
       addToast({ title: "Logo upload failed", description: e?.message || "Please try again.", variant: "error" });
     } finally {

@@ -3,6 +3,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { CreateBusinessDto, UpdateBusinessDto } from './dto/business.dto';
 import { StorageService } from '../storage/storage.service';
 import * as crypto from 'crypto';
+import { scanUploadedObject } from '../security/scan';
 
 @Injectable()
 export class BusinessesService {
@@ -13,6 +14,19 @@ export class BusinessesService {
     @Inject(forwardRef(() => 'ComplianceTasksGenerator'))
     private complianceTasksGenerator?: any,
   ) {}
+
+  private readonly MAX_LOGO_UPLOAD_BYTES = 2 * 1024 * 1024; // 2MB
+
+  private verifyLogoMagicBytes(mimeType: string, header: Buffer): boolean {
+    if (mimeType === 'image/png') {
+      const sig = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
+      return header.subarray(0, 8).equals(sig);
+    }
+    if (mimeType === 'image/jpeg' || mimeType === 'image/jpg') {
+      return header.length >= 3 && header[0] === 0xff && header[1] === 0xd8 && header[2] === 0xff;
+    }
+    return false;
+  }
 
   async createInvoiceLogoUploadUrl(businessId: string, userId: string, mimeType: string) {
     await this.findOne(businessId, userId);
@@ -30,6 +44,61 @@ export class BusinessesService {
     const key = `businesses/${businessId}/invoice-logo/${crypto.randomUUID()}.${ext}`;
     const uploadUrl = await this.storageService.getSignedUploadUrl(key, mt);
     return { uploadUrl, key };
+  }
+
+  async uploadInvoiceLogoViaApi(
+    businessId: string,
+    userId: string,
+    file: Express.Multer.File,
+  ): Promise<{ key: string }> {
+    await this.findOne(businessId, userId);
+
+    if (!file) {
+      throw new BadRequestException({ code: 'LOGO_MISSING', message: 'No logo file uploaded' });
+    }
+
+    const mt = (file.mimetype || '').toLowerCase();
+    const allowed = ['image/png', 'image/jpeg', 'image/jpg'];
+    if (!allowed.includes(mt)) {
+      throw new BadRequestException({ code: 'LOGO_TYPE_NOT_ALLOWED', message: 'Logo must be PNG or JPG' });
+    }
+
+    if (file.size > this.MAX_LOGO_UPLOAD_BYTES) {
+      throw new BadRequestException({
+        code: 'LOGO_TOO_LARGE',
+        message: `Logo too large. Max size is ${this.MAX_LOGO_UPLOAD_BYTES} bytes`,
+      });
+    }
+
+    const header = (file.buffer || Buffer.alloc(0)).subarray(0, 16);
+    if (!this.verifyLogoMagicBytes(mt, header)) {
+      throw new BadRequestException({
+        code: 'LOGO_TYPE_NOT_ALLOWED',
+        message: 'Logo file signature does not match PNG/JPG',
+      });
+    }
+
+    const ext = mt.includes('png') ? 'png' : 'jpg';
+    const key = `businesses/${businessId}/invoice-logo/${crypto.randomUUID()}.${ext}`;
+
+    await this.storageService.uploadFile(file.buffer, key, mt);
+
+    const scan = await scanUploadedObject(key);
+    if (!scan.ok) {
+      await this.storageService.deleteFile(key).catch(() => {});
+      throw new BadRequestException({
+        code: 'LOGO_REJECTED',
+        message: ('reason' in scan ? scan.reason : undefined) || 'Upload rejected',
+      });
+    }
+
+    // Persist immediately on the business record so refresh shows the logo
+    await this.prisma.business.update({
+      where: { id: businessId },
+      data: { invoiceLogoUrl: key } as any,
+    });
+
+    return { key };
   }
 
   async getResolvedInvoiceLogoUrl(businessId: string, userId: string): Promise<{ url: string | null }> {
