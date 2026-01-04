@@ -1,4 +1,4 @@
-import PDFDocument from 'pdfkit';
+import PDFDocument = require('pdfkit');
 
 type TemplateKey = 'classic' | 'modern' | 'minimal';
 
@@ -54,6 +54,7 @@ function fmtDate(d?: Date | null) {
 }
 
 async function fetchLogo(url: string): Promise<Buffer | null> {
+  if (typeof fetch !== 'function') return null;
   try {
     const controller = new AbortController();
     const t = setTimeout(() => controller.abort(), 3000);

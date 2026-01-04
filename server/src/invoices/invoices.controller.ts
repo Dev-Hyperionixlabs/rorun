@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Put, Body, Param, UseGuards, Request, Res } from '@nestjs/common';
+import { Controller, Get, Post, Put, Body, Param, UseGuards, Request, Res, HttpException, HttpStatus } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiBearerAuth, ApiParam } from '@nestjs/swagger';
 import { InvoicesService } from './invoices.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
@@ -57,48 +57,60 @@ export class InvoicesController {
     const safeTemplate =
       templateKey === 'modern' || templateKey === 'minimal' || templateKey === 'classic' ? templateKey : 'classic';
 
-    const buf = await renderInvoicePdf({
-      templateKey: safeTemplate as any,
-      business: {
-        name: business.name,
-        invoiceDisplayName: business.invoiceDisplayName,
-        invoiceLogoUrl: business.invoiceLogoUrl,
-        invoiceAddressLine1: business.invoiceAddressLine1,
-        invoiceAddressLine2: business.invoiceAddressLine2,
-        invoiceCity: business.invoiceCity,
-        invoiceState: business.invoiceState,
-        invoiceCountry: business.invoiceCountry,
-        invoicePostalCode: business.invoicePostalCode,
-        invoiceFooterNote: business.invoiceFooterNote,
-        paymentBankName: business.paymentBankName,
-        paymentAccountName: business.paymentAccountName,
-        paymentAccountNumber: business.paymentAccountNumber,
-        paymentInstructionsNote: business.paymentInstructionsNote,
-      },
-      invoice: {
-        invoiceNumber: invoice.invoiceNumber,
-        issueDate: new Date(invoice.issueDate),
-        dueDate: invoice.dueDate ? new Date(invoice.dueDate) : null,
-        currency: invoice.currency || 'NGN',
-        notes: invoice.notes || null,
-        subtotalAmount: Number(invoice.subtotalAmount || 0),
-        taxType: invoice.taxType || 'none',
-        taxLabel: invoice.taxLabel || null,
-        taxRate: invoice.taxRate !== null && invoice.taxRate !== undefined ? Number(invoice.taxRate) : null,
-        taxAmount: invoice.taxAmount !== null && invoice.taxAmount !== undefined ? Number(invoice.taxAmount) : null,
-        totalAmount: Number(invoice.totalAmount || 0),
-      },
-      client: invoice.client
-        ? { name: invoice.client.name, email: invoice.client.email, phone: invoice.client.phone }
-        : null,
-      job: invoice.job ? { title: invoice.job.title } : null,
-      items: (invoice.items || []).map((it: any) => ({
-        description: it.description,
-        quantity: Number(it.quantity),
-        unitPrice: Number(it.unitPrice),
-        amount: Number(it.amount),
-      })),
-    });
+    let buf: Buffer;
+    try {
+      buf = await renderInvoicePdf({
+        templateKey: safeTemplate as any,
+        business: {
+          name: business.name,
+          invoiceDisplayName: business.invoiceDisplayName,
+          invoiceLogoUrl: business.invoiceLogoUrl,
+          invoiceAddressLine1: business.invoiceAddressLine1,
+          invoiceAddressLine2: business.invoiceAddressLine2,
+          invoiceCity: business.invoiceCity,
+          invoiceState: business.invoiceState,
+          invoiceCountry: business.invoiceCountry,
+          invoicePostalCode: business.invoicePostalCode,
+          invoiceFooterNote: business.invoiceFooterNote,
+          paymentBankName: business.paymentBankName,
+          paymentAccountName: business.paymentAccountName,
+          paymentAccountNumber: business.paymentAccountNumber,
+          paymentInstructionsNote: business.paymentInstructionsNote,
+        },
+        invoice: {
+          invoiceNumber: invoice.invoiceNumber,
+          issueDate: new Date(invoice.issueDate),
+          dueDate: invoice.dueDate ? new Date(invoice.dueDate) : null,
+          currency: invoice.currency || 'NGN',
+          notes: invoice.notes || null,
+          subtotalAmount: Number(invoice.subtotalAmount || 0),
+          taxType: invoice.taxType || 'none',
+          taxLabel: invoice.taxLabel || null,
+          taxRate: invoice.taxRate !== null && invoice.taxRate !== undefined ? Number(invoice.taxRate) : null,
+          taxAmount: invoice.taxAmount !== null && invoice.taxAmount !== undefined ? Number(invoice.taxAmount) : null,
+          totalAmount: Number(invoice.totalAmount || 0),
+        },
+        client: invoice.client
+          ? { name: invoice.client.name, email: invoice.client.email, phone: invoice.client.phone }
+          : null,
+        job: invoice.job ? { title: invoice.job.title } : null,
+        items: (invoice.items || []).map((it: any) => ({
+          description: it.description,
+          quantity: Number(it.quantity),
+          unitPrice: Number(it.unitPrice),
+          amount: Number(it.amount),
+        })),
+      });
+    } catch (err: any) {
+      // Deterministic error for the UI; details stay in logs via GlobalExceptionFilter.
+      throw new HttpException(
+        {
+          code: 'PDF_RENDER_FAILED',
+          message: err?.message || 'Failed to generate PDF',
+        },
+        HttpStatus.INTERNAL_SERVER_ERROR,
+      );
+    }
 
     const filename = `Invoice-${invoice.invoiceNumber || invoice.id}.pdf`;
     res.setHeader('Content-Type', 'application/pdf');
