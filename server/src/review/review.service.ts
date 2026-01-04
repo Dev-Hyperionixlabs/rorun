@@ -32,6 +32,16 @@ export class ReviewService {
     });
   }
 
+  async getIssueCounts(businessId: string, userId: string, taxYear: number) {
+    await this.businessesService.findOne(businessId, userId);
+    const [open, resolved, dismissed] = await Promise.all([
+      this.prisma.reviewIssue.count({ where: { businessId, taxYear, status: 'open' } }),
+      this.prisma.reviewIssue.count({ where: { businessId, taxYear, status: 'resolved' } }),
+      this.prisma.reviewIssue.count({ where: { businessId, taxYear, status: 'dismissed' } }),
+    ]);
+    return { open, resolved, dismissed };
+  }
+
   async getIssueWithDetails(businessId: string, userId: string, issueId: string) {
     await this.businessesService.findOne(businessId, userId);
     const issue = await this.prisma.reviewIssue.findUnique({ where: { id: issueId } });
@@ -71,6 +81,18 @@ export class ReviewService {
     return this.prisma.reviewIssue.update({
       where: { id: issueId },
       data: { status: 'dismissed' },
+    });
+  }
+
+  async resolveIssue(businessId: string, userId: string, issueId: string) {
+    await this.businessesService.findOne(businessId, userId);
+    const issue = await this.prisma.reviewIssue.findUnique({ where: { id: issueId } });
+    if (!issue || issue.businessId !== businessId) {
+      throw new NotFoundException('Issue not found');
+    }
+    return this.prisma.reviewIssue.update({
+      where: { id: issueId },
+      data: { status: 'resolved' },
     });
   }
 

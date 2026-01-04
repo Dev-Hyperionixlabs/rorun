@@ -37,11 +37,18 @@ export class MonoProvider {
     return this.environment;
   }
 
+  isConfigured(): boolean {
+    return !!(this.publicKey && this.secretKey);
+  }
+
   /**
    * Exchange Mono Connect code for account ID
    */
   async exchangeCodeForAccountId(code: string): Promise<string> {
     try {
+      if (!this.secretKey) {
+        throw new Error('MONO_SECRET_KEY is not set');
+      }
       const response = await fetch(`${this.baseUrl}/v1/account/auth`, {
         method: 'POST',
         headers: {
@@ -72,6 +79,7 @@ export class MonoProvider {
     account?: { name?: string; mask?: string; currency?: string };
   }> {
     try {
+      if (!this.secretKey) return {};
       const response = await fetch(`${this.baseUrl}/v1/accounts/${accountId}`, {
         headers: {
           'mono-sec-key': this.secretKey,
@@ -102,6 +110,9 @@ export class MonoProvider {
     to?: Date,
   ): Promise<NormalizedTransaction[]> {
     try {
+      if (!this.secretKey) {
+        throw new Error('MONO_SECRET_KEY is not set');
+      }
       const params = new URLSearchParams();
       if (from) {
         params.append('start', from.toISOString().split('T')[0]);

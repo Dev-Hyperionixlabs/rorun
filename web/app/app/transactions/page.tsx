@@ -261,7 +261,9 @@ function TransactionsPageInner() {
       </Card>
 
       {/* Bank Connections Panel */}
-      {canAccess(currentPlanId, "bank_connect") && <BankConnectionsPanel businessId={business.id} />}
+      {canAccess(currentPlanId, "bank_connect") && (
+        <BankConnectionsPanel key={refreshKey} businessId={business.id} />
+      )}
 
       {showImportWizard && (
         <ImportWizard

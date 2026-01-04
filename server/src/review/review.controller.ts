@@ -33,6 +33,17 @@ export class ReviewController {
     return this.reviewService.listIssues(businessId, req.user.id, year, { status, type });
   }
 
+  @Get('issues/counts')
+  @ApiOperation({ summary: 'Get counts of issues by status for a tax year' })
+  async counts(
+    @Param('businessId') businessId: string,
+    @Request() req,
+    @Query('taxYear') taxYear?: string,
+  ) {
+    const year = taxYear ? parseInt(taxYear, 10) : new Date().getFullYear();
+    return this.reviewService.getIssueCounts(businessId, req.user.id, year);
+  }
+
   @Get('issues/:id')
   @ApiOperation({ summary: 'Get issue with details' })
   async getOne(@Param('businessId') businessId: string, @Param('id') id: string, @Request() req) {
@@ -43,6 +54,12 @@ export class ReviewController {
   @ApiOperation({ summary: 'Dismiss an issue' })
   async dismiss(@Param('businessId') businessId: string, @Param('id') id: string, @Request() req) {
     return this.reviewService.dismissIssue(businessId, req.user.id, id);
+  }
+
+  @Post('issues/:id/resolve')
+  @ApiOperation({ summary: 'Mark an issue as resolved' })
+  async resolve(@Param('businessId') businessId: string, @Param('id') id: string, @Request() req) {
+    return this.reviewService.resolveIssue(businessId, req.user.id, id);
   }
 
   @Post('rescan')

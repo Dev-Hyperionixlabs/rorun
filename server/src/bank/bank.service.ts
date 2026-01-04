@@ -106,6 +106,18 @@ export class BankService {
   async initMono(businessId: string, userId: string) {
     await this.businessesService.findOne(businessId, userId);
 
+    // If Mono isn't configured in this environment, fail fast with a friendly message.
+    if (!this.monoProvider.isConfigured()) {
+      throw new HttpException(
+        {
+          code: 'BANK_CONNECT_NOT_CONFIGURED',
+          message:
+            'Bank connect is not configured on this environment yet. Please use Upload statement (PDF/CSV) to import transactions.',
+        },
+        HttpStatus.SERVICE_UNAVAILABLE,
+      );
+    }
+
     // Check feature access
     const hasFeature = await this.plansService.hasFeature(
       userId,
@@ -139,6 +151,17 @@ export class BankService {
   ) {
     await this.businessesService.findOne(businessId, userId);
 
+    if (!this.monoProvider.isConfigured()) {
+      throw new HttpException(
+        {
+          code: 'BANK_CONNECT_NOT_CONFIGURED',
+          message:
+            'Bank connect is not configured on this environment yet. Please use Upload statement (PDF/CSV) to import transactions.',
+        },
+        HttpStatus.SERVICE_UNAVAILABLE,
+      );
+    }
+
     // Validate consent
     if (!dto.consentAccepted) {
       throw new BadRequestException({
@@ -171,9 +194,23 @@ export class BankService {
     }
 
     // Exchange code for account ID
-    const providerAccountId = await this.monoProvider.exchangeCodeForAccountId(
-      dto.code,
-    );
+    let providerAccountId: string;
+    try {
+      providerAccountId = await this.monoProvider.exchangeCodeForAccountId(dto.code);
+    } catch (err: any) {
+      const msg = err?.message || 'Mono exchange failed';
+      // Make this deterministic for the UI (avoid generic 500s)
+      throw new HttpException(
+        {
+          code: 'MONO_EXCHANGE_FAILED',
+          message:
+            msg.includes('MONO_SECRET_KEY') || msg.toLowerCase().includes('not set')
+              ? 'Bank connect is not configured on the server. Please use Upload statement.'
+              : `Bank connect failed to verify the connection with Mono. Please try again or use Upload statement.`,
+        },
+        HttpStatus.BAD_GATEWAY,
+      );
+    }
 
     // Fetch account info if not provided
     let accountInfo: {
