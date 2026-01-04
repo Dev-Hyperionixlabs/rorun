@@ -57,25 +57,32 @@ async function fetchLogo(url: string): Promise<Buffer | null> {
   if (typeof fetch !== 'function') return null;
   try {
     const controller = new AbortController();
-    const t = setTimeout(() => controller.abort(), 3000);
+    const t = setTimeout(() => controller.abort(), 6000);
     const res = await fetch(url, { signal: controller.signal } as any).finally(() => clearTimeout(t));
     if (!res.ok) return null;
-    const ct = (res.headers.get('content-type') || '').toLowerCase();
-    if (!ct.includes('image/png') && !ct.includes('image/jpeg') && !ct.includes('image/jpg')) return null;
     const len = Number(res.headers.get('content-length') || '0');
     if (len && len > 2_000_000) return null;
     const ab = await res.arrayBuffer();
     if (ab.byteLength > 2_000_000) return null;
-    return Buffer.from(ab);
+    const buf = Buffer.from(ab);
+    // R2/S3 signed URLs sometimes omit/override content-type; verify by magic bytes instead.
+    const header = buf.subarray(0, 16);
+    const isPng =
+      header.length >= 8 &&
+      header.subarray(0, 8).equals(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]));
+    const isJpg = header.length >= 3 && header[0] === 0xff && header[1] === 0xd8 && header[2] === 0xff;
+    if (!isPng && !isJpg) return null;
+    return buf;
   } catch {
     return null;
   }
 }
 
 function styleForTemplate(key: TemplateKey) {
-  if (key === 'modern') return { accent: '#059669', titleSize: 20, headerBar: true };
-  if (key === 'minimal') return { accent: '#0f172a', titleSize: 18, headerBar: false };
-  return { accent: '#111827', titleSize: 18, headerBar: true };
+  // Keep invoices brand-neutral: black/grey only (avoid clashing with customer brand colors).
+  if (key === 'modern') return { accent: '#111827', titleSize: 20, headerBar: false };
+  if (key === 'minimal') return { accent: '#111827', titleSize: 18, headerBar: false };
+  return { accent: '#111827', titleSize: 18, headerBar: false };
 }
 
 export async function renderInvoicePdf(input: InvoicePdfInput): Promise<Buffer> {

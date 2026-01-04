@@ -566,49 +566,23 @@ function WorkspaceSettingsSection() {
     setUploadingLogo(true);
     try {
       const base = API_BASE.replace(/\/+$/, "");
-      // 1) Ask API for signed upload URL
-      const initRes = await fetch(`${base}/businesses/${business.id}/invoice-logo/upload-url`, {
+      // Prefer server upload to avoid browser->R2 CORS failures/noise.
+      const form = new FormData();
+      form.append("file", logoFile);
+      const res = await fetch(`${base}/businesses/${business.id}/invoice-logo/upload`, {
         method: "POST",
-        headers: { "Content-Type": "application/json", ...authHeaders() },
+        headers: { ...authHeaders() },
         credentials: "include",
-        body: JSON.stringify({ mimeType: mt }),
+        body: form,
       });
-      if (!initRes.ok) {
-        const text = await initRes.text().catch(() => "");
-        throw new Error(text || "Could not start logo upload.");
+      if (!res.ok) {
+        const txt = await res.text().catch(() => "");
+        throw new Error(txt || "Logo upload failed. Please try again.");
       }
-      const { uploadUrl, key } = (await initRes.json()) as { uploadUrl: string; key: string };
-
-      // 2) PUT to storage (may still be blocked by CORS in some environments; if so, fall back to URL input)
-      try {
-        const putRes = await fetch(uploadUrl, { method: "PUT", headers: { "Content-Type": mt }, body: logoFile });
-        if (!putRes.ok) throw new Error("PUT failed");
-
-        // 3) Persist immediately so refresh shows it
-        await updateBusiness(business.id, { invoiceLogoUrl: key } as any);
-        setInvoiceConfig((p) => ({ ...p, invoiceLogoUrl: key }));
-        setLogoFile(null);
-        addToast({ title: "Logo saved", description: "Your invoice logo was updated.", variant: "success" });
-      } catch (putErr) {
-        // 2b) CORS-safe fallback: upload via API
-        const form = new FormData();
-        form.append("file", logoFile);
-        const res = await fetch(`${base}/businesses/${business.id}/invoice-logo/upload`, {
-          method: "POST",
-          headers: { ...authHeaders() },
-          credentials: "include",
-          body: form,
-        });
-        if (!res.ok) {
-          const txt = await res.text().catch(() => "");
-          throw new Error(txt || "Logo upload failed (CORS). Please try again.");
-        }
-        const data = (await res.json()) as { key: string };
-        // Endpoint already persists on the business; keep local form in sync
-        setInvoiceConfig((p) => ({ ...p, invoiceLogoUrl: data.key }));
-        setLogoFile(null);
-        addToast({ title: "Logo saved", description: "Your invoice logo was updated.", variant: "success" });
-      }
+      const data = (await res.json()) as { key: string };
+      setInvoiceConfig((p) => ({ ...p, invoiceLogoUrl: data.key }));
+      setLogoFile(null);
+      addToast({ title: "Logo saved", description: "Your invoice logo was updated.", variant: "success" });
     } catch (e: any) {
       addToast({ title: "Logo upload failed", description: e?.message || "Please try again.", variant: "error" });
     } finally {
