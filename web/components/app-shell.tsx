@@ -19,6 +19,7 @@ import { storeAuthToken } from "@/lib/auth-token";
 const navItems = [
   { href: "/app/dashboard", label: "Dashboard" },
   { href: "/app/transactions", label: "Transactions" },
+  { href: "/app/invoices", label: "Invoices" },
   { href: "/app/documents", label: "Documents" },
   { href: "/app/review", label: "Review" },
   { href: "/app/obligations", label: "Obligations" },
