@@ -72,6 +72,17 @@ export interface Business {
   hasTIN: boolean;
   vatRegistered: boolean;
   turnoverBand: "<25m" | "25-100m" | ">100m";
+  // Tax profile fields (used by Tax Rules Engine + obligations)
+  annualTurnoverNGN?: number | null;
+  fixedAssetsNGN?: number | null;
+  employeeCount?: number | null;
+  accountingYearEndMonth?: number | null; // 1-12
+  accountingYearEndDay?: number | null; // 1-31
+  isProfessionalServices?: boolean;
+  claimsTaxIncentives?: boolean;
+  isNonResident?: boolean;
+  sellsIntoNigeria?: boolean;
+  einvoicingEnabled?: boolean;
   eligibility?: EligibilityResult;
 }
 

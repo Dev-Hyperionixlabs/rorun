@@ -13,11 +13,6 @@ export default function AppLayout({
       <Script
         src="https://connect.withmono.com/connect.js"
         strategy="afterInteractive"
-        onError={() => {
-          // Best-effort: the button will still show a guided fallback.
-          // eslint-disable-next-line no-console
-          console.warn("[Mono] connect.js failed to load");
-        }}
       />
       <AppShell>{children}</AppShell>
     </ToastProvider>

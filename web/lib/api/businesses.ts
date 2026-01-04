@@ -12,11 +12,11 @@ export interface CreateBusinessInput {
   tin?: string;
   vatRegistered?: boolean;
   estimatedTurnoverBand?: string;
-  annualTurnoverNGN?: number;
-  fixedAssetsNGN?: number;
-  employeeCount?: number;
-  accountingYearEndMonth?: number;
-  accountingYearEndDay?: number;
+  annualTurnoverNGN?: number | null;
+  fixedAssetsNGN?: number | null;
+  employeeCount?: number | null;
+  accountingYearEndMonth?: number | null;
+  accountingYearEndDay?: number | null;
   isProfessionalServices?: boolean;
   claimsTaxIncentives?: boolean;
   isNonResident?: boolean;
