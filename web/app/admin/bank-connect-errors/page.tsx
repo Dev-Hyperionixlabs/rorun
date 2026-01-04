@@ -93,6 +93,7 @@ export default function BankConnectErrorsPage() {
                 <div className="mt-2 grid gap-1 text-[11px] text-slate-500">
                   <div>businessId: {a.businessId || "—"}</div>
                   <div>userId: {a.userId || "—"}</div>
+                  <div className="truncate">userAgent: {a.userAgent || "—"}</div>
                 </div>
               </div>
             ))

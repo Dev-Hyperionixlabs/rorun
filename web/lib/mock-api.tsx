@@ -85,18 +85,26 @@ const AppContext = createContext<AppContextValue | null>(null);
 const CURRENT_BUSINESS_STORAGE_KEY = "rorun_current_business_id";
 
 // IMPORTANT: Render cold starts + real-world latency can exceed a couple seconds.
-// Keep this aligned with apiFetch timeout (12s) so we don't show false "API unreachable".
-async function checkApiHealth(baseUrl: string, timeoutMs = 12_000): Promise<boolean> {
-  const base = baseUrl.replace(/\/$/, "");
+// Keep this aligned with apiRequest default timeout so we don't show false "API unreachable".
+async function checkApiHealth(baseUrl: string, timeoutMs = 20_000): Promise<boolean> {
+  const base = baseUrl.replace(/\/+$/, "");
   const ctrl = new AbortController();
   const timeout = setTimeout(() => ctrl.abort(), timeoutMs);
 
   try {
-    const res = await fetch(`${base}/health`, {
-      method: "GET",
-      cache: "no-store",
-      signal: ctrl.signal,
-    });
+    const primaryUrl = `${base}/health`;
+    const altUrl =
+      base.endsWith("/api") || base.includes("/api/")
+        ? `${base.replace(/\/api$/, "")}/health`
+        : `${base}/api/health`;
+
+    const doFetch = (url: string) =>
+      fetch(url, { method: "GET", cache: "no-store", signal: ctrl.signal });
+
+    let res = await doFetch(primaryUrl);
+    if (!res.ok && altUrl !== primaryUrl) {
+      res = await doFetch(altUrl);
+    }
     return res.ok;
   } catch {
     return false;

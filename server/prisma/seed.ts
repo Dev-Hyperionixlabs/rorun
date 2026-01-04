@@ -312,124 +312,164 @@ Value Added Tax (VAT) in Nigeria is charged at **7.5%** on goods and services.
   });
 
   // NOTE: We intentionally do not seed demo users/businesses/transactions here.
-  // Create default tax rule set (Phase 11)
+  // Create default tax rule sets
   // Some environments may have an out-of-date generated Prisma Client type surface.
   // These models exist in `schema.prisma`, but if the local client typings lag behind,
   // TypeScript will complain. Use a narrow escape hatch here to keep seed runnable.
   const prismaAny = prisma as any;
 
-  const defaultRuleSet = await prismaAny.taxRuleSet.upsert({
-    where: { version: '2026.1' },
+  // 1) Baseline active ruleset (keeps the app functional even before admin activates a draft)
+  const baselineRuleSet = await prismaAny.taxRuleSet.upsert({
+    where: { version: 'baseline.1' },
     update: {},
     create: {
-      version: '2026.1',
-      name: 'Nigeria SME Tax Reform 2026 - v1',
+      version: 'baseline.1',
+      name: 'Baseline (safe defaults)',
       status: 'active',
       effectiveFrom: new Date(Date.now() - 24 * 60 * 60 * 1000), // 1 day ago
-      description: 'Default rule set for Nigeria 2026 tax year. Contains placeholder rules that must be updated with authoritative legal criteria.',
+      description: 'Safe baseline ruleset so evaluations do not fail on a fresh DB.',
     },
   });
 
-  // Create default baseline rule (sets unknown status)
   await prismaAny.taxRuleV2.upsert({
-    where: {
-      ruleSetId_key: {
-        ruleSetId: defaultRuleSet.id,
-        key: 'baseline_unknown',
-      },
-    },
+    where: { ruleSetId_key: { ruleSetId: baselineRuleSet.id, key: 'baseline_unknown' } },
     update: {},
     create: {
-      ruleSetId: defaultRuleSet.id,
+      ruleSetId: baselineRuleSet.id,
       key: 'baseline_unknown',
       type: 'eligibility',
-      priority: 1000, // High priority (evaluated last)
-      conditionsJson: {}, // Always matches (empty condition)
+      priority: 1000,
+      conditionsJson: {},
       outcomeJson: {
         citStatus: 'unknown',
         vatStatus: 'unknown',
         whtStatus: 'unknown',
-        complianceNote: 'Rule not configured. Please update with authoritative criteria.',
+        complianceNote: 'No active draft ruleset configured yet. Admin can activate a ruleset in Tax Config.',
       },
-      explanation: 'Default rule: No specific rules matched. This is a placeholder and must be updated with legal criteria.',
+      explanation: 'Baseline: no configured rule matched.',
     },
   });
 
-  // Create placeholder SME zero-tax rule (example - must be updated)
-  await prismaAny.taxRuleV2.upsert({
-    where: {
-      ruleSetId_key: {
-        ruleSetId: defaultRuleSet.id,
-        key: 'cit_eligibility_small_business_placeholder',
-      },
+  // 2) 2026 reforms draft ruleset (NOT auto-activated)
+  const reforms2026 = await prismaAny.taxRuleSet.upsert({
+    where: { version: '2026.1' },
+    update: {
+      name: 'Nigeria 2026 reforms (DRAFT)',
+      status: 'draft',
+      description: 'Draft ruleset for 2026 reforms. Admin must activate after validation.',
     },
-    update: {},
     create: {
-      ruleSetId: defaultRuleSet.id,
-      key: 'cit_eligibility_small_business_placeholder',
+      version: '2026.1',
+      name: 'Nigeria 2026 reforms (DRAFT)',
+      status: 'draft',
+      effectiveFrom: new Date('2026-01-01T00:00:00.000Z'),
+      description: 'Draft ruleset for 2026 reforms. Admin must activate after validation.',
+    },
+  });
+
+  // Rules (placeholders – admin refines conditions/outcomes as legal criteria is finalized)
+  const rules = [
+    {
+      key: 'cit_exempt_small_company_2026',
       type: 'eligibility',
       priority: 10,
-      conditionsJson: {
-        and: [
-          { field: 'legalForm', op: 'in', value: ['sole_proprietor', 'partnership'] },
-          { field: 'estimatedTurnoverBand', op: 'eq', value: '<25m' },
-        ],
-      },
-      outcomeJson: {
-        citStatus: 'zero',
-        complianceNote: 'Small business eligible for zero CIT rate (PLACEHOLDER - verify with FIRS guidelines)',
-      },
-      explanation: 'Small businesses with turnover below ₦25M may be eligible for zero CIT rate. This is a placeholder rule and must be verified against current FIRS regulations.',
+      conditionsJson: { and: [{ field: 'annualTurnoverNGN', op: 'lte', value: 25_000_000 }] },
+      outcomeJson: { citStatus: 'exempt' },
+      explanation: 'Draft: small companies may be exempt from CIT under 2026 reforms (verify).',
     },
-  });
-
-  // Create placeholder VAT exemption rule
-  await prismaAny.taxRuleV2.upsert({
-    where: {
-      ruleSetId_key: {
-        ruleSetId: defaultRuleSet.id,
-        key: 'vat_exemption_small_business_placeholder',
-      },
-    },
-    update: {},
-    create: {
-      ruleSetId: defaultRuleSet.id,
-      key: 'vat_exemption_small_business_placeholder',
+    {
+      key: 'cit_dev_levy_applies_2026',
       type: 'obligation',
-      priority: 10,
-      conditionsJson: {
-        and: [
-          { field: 'estimatedTurnoverBand', op: 'eq', value: '<25m' },
-          { field: 'vatRegistered', op: 'eq', value: false },
-        ],
-      },
-      outcomeJson: {
-        vatStatus: 'exempt',
-        complianceNote: 'Small business below VAT threshold (PLACEHOLDER - verify threshold with FIRS)',
-      },
-      explanation: 'Businesses below ₦25M turnover threshold may be exempt from VAT registration. This is a placeholder and must be verified against current FIRS thresholds.',
+      priority: 20,
+      conditionsJson: { and: [{ field: 'legalForm', op: 'eq', value: 'company' }] },
+      outcomeJson: { complianceNote: 'Draft: development levy obligation may apply in 2026 (verify).' },
+      explanation: 'Draft: development levy applies to companies (verify).',
     },
-  });
+    {
+      key: 'vat_einvoice_required_2026',
+      type: 'obligation',
+      priority: 30,
+      conditionsJson: { and: [{ field: 'vatRegistered', op: 'eq', value: true }] },
+      outcomeJson: { einvoicingRequired: true },
+      explanation: 'Draft: VAT e-invoicing required for VAT-registered businesses (verify).',
+    },
+    {
+      key: 'vat_nonresident_registration_required_2026',
+      type: 'obligation',
+      priority: 40,
+      conditionsJson: { and: [{ field: 'isNonResident', op: 'eq', value: true }, { field: 'sellsIntoNigeria', op: 'eq', value: true }] },
+      outcomeJson: { vatStatus: 'must_register' },
+      explanation: 'Draft: non-resident sellers into Nigeria may need VAT registration (verify).',
+    },
+    {
+      key: 'cit_incentives_return_required_2026',
+      type: 'obligation',
+      priority: 50,
+      conditionsJson: { and: [{ field: 'claimsTaxIncentives', op: 'eq', value: true }] },
+      outcomeJson: { complianceNote: 'Draft: incentives return may be required (verify).' },
+      explanation: 'Draft: businesses claiming incentives may need a specific return (verify).',
+    },
+  ];
 
-  // Create annual return deadline template (placeholder)
-  await prismaAny.deadlineTemplate.upsert({
-    where: {
-      ruleSetId_key: {
-        ruleSetId: defaultRuleSet.id,
-        key: 'annual_return',
-      },
-    },
-    update: {},
-    create: {
-      ruleSetId: defaultRuleSet.id,
-      key: 'annual_return',
+  for (const r of rules) {
+    await prismaAny.taxRuleV2.upsert({
+      where: { ruleSetId_key: { ruleSetId: reforms2026.id, key: r.key } },
+      update: { ...r },
+      create: { ruleSetId: reforms2026.id, ...r },
+    });
+  }
+
+  // Deadline templates (draft – admin adjusts dates/policy)
+  const templates = [
+    {
+      key: 'cit_annual_return_2026',
       frequency: 'annual',
-      dueMonth: 3, // March
-      dueDay: 31, // 31st
-      title: 'Annual Tax Return',
-      description: 'Annual tax return filing deadline. PLACEHOLDER: Due date set to March 31. Verify actual deadline with FIRS for current tax year.',
+      dueMonth: 6,
+      dueDay: 30,
+      title: 'CIT annual return',
+      description: 'Draft: annual CIT return deadline (verify).',
     },
-  });
+    {
+      key: 'cit_dev_levy_annual_2026',
+      frequency: 'annual',
+      dueMonth: 6,
+      dueDay: 30,
+      title: 'Development levy (annual)',
+      description: 'Draft: annual development levy deadline (verify).',
+    },
+    {
+      key: 'vat_einvoice_milestone_2026',
+      frequency: 'one_time',
+      dueMonth: 1,
+      dueDay: 31,
+      title: 'VAT e-invoicing milestone',
+      description: 'Draft: e-invoicing milestone date (verify).',
+    },
+    {
+      key: 'vat_nonresident_registration_2026',
+      frequency: 'one_time',
+      dueMonth: 1,
+      dueDay: 31,
+      title: 'Non-resident VAT registration',
+      description: 'Draft: registration milestone for non-resident sellers (verify).',
+    },
+    {
+      key: 'cit_incentives_return_annual_2026',
+      frequency: 'annual',
+      dueMonth: 6,
+      dueDay: 30,
+      title: 'CIT incentives return',
+      description: 'Draft: annual incentives return deadline (verify).',
+    },
+  ];
+
+  for (const t of templates) {
+    await prismaAny.deadlineTemplate.upsert({
+      where: { ruleSetId_key: { ruleSetId: reforms2026.id, key: t.key } },
+      update: { ...t },
+      create: { ruleSetId: reforms2026.id, ...t },
+    });
+  }
 
   console.log('Seed data created successfully');
   console.log(`Created plans: free, basic, business, accountant`);
@@ -437,7 +477,8 @@ Value Added Tax (VAT) in Nigeria is charged at **7.5%** on goods and services.
   console.log(`Created ${expenseCategories.length} expense categories`);
   console.log(`Created tax rules for ${currentYear}`);
   console.log(`Created knowledge articles`);
-  console.log(`Created default tax rule set 2026.1 with placeholder rules`);
+  console.log(`Created baseline active tax rule set baseline.1`);
+  console.log(`Seeded draft ruleset 2026.1 (NOT activated) with 2026 reforms placeholders`);
 }
 
 main()

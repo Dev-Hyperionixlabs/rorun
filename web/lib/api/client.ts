@@ -52,7 +52,8 @@ export async function apiRequest<T = any>(
   if (!API_URL) {
     throw new ApiError(0, "API is not configured.", "API_NOT_CONFIGURED");
   }
-  const { skipAuth = false, timeoutMs = 12_000, ...fetchOptions } = options;
+  // Default higher than 12s to tolerate cold starts + slow networks.
+  const { skipAuth = false, timeoutMs = 20_000, ...fetchOptions } = options;
 
   const headers: Record<string, string> = {
     "Content-Type": "application/json",

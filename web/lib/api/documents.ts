@@ -1,9 +1,6 @@
 "use client";
 
-import { getStoredAuthToken } from "../auth-token";
-import { API_BASE } from "./client";
-
-const API_URL = API_BASE;
+import { api } from "./client";
 
 export interface Document {
   id: string;
@@ -26,14 +23,7 @@ export interface Document {
 }
 
 export async function getDocuments(businessId: string): Promise<Document[]> {
-  const token = getStoredAuthToken();
-  const res = await fetch(`${API_URL}/businesses/${businessId}/documents`, {
-    headers: {
-      Authorization: token ? `Bearer ${token}` : "",
-    },
-  });
-  if (!res.ok) throw new Error("Failed to fetch documents");
-  const data = await res.json();
+  const data = await api.get<any>(`/businesses/${businessId}/documents`, { timeoutMs: 20_000 });
   const items = Array.isArray(data) ? data : data.items || [];
 
   return items.map((doc: any) => ({
@@ -55,28 +45,40 @@ export async function uploadDocument(
   file: File,
   relatedTransactionId?: string
 ): Promise<Document> {
-  const token = getStoredAuthToken();
-  const formData = new FormData();
-  formData.append("file", file);
-  if (relatedTransactionId) {
-    formData.append("relatedTransactionId", relatedTransactionId);
-  }
+  const mimeType = file.type || (file.name.toLowerCase().endsWith(".pdf") ? "application/pdf" : "");
+  if (!mimeType) throw new Error("Could not determine file type.");
 
-  const res = await fetch(`${API_URL}/businesses/${businessId}/documents`, {
-    method: "POST",
-    headers: {
-      Authorization: token ? `Bearer ${token}` : "",
-      // Note: Don't set Content-Type for FormData, browser sets it automatically with boundary
-    },
-    body: formData,
+  // 1) Get signed upload URL from server
+  const { uploadUrl, key } = await api.post<{ uploadUrl: string; key: string }>(
+    `/businesses/${businessId}/documents/upload-url`,
+    { filename: file.name, mimeType },
+    { timeoutMs: 20_000 }
+  );
+
+  // 2) Upload bytes directly to storage
+  const putRes = await fetch(uploadUrl, {
+    method: "PUT",
+    headers: { "Content-Type": mimeType },
+    body: file,
   });
-
-  if (!res.ok) {
-    const text = await res.text();
-    throw new Error(text || "Failed to upload document");
+  if (!putRes.ok) {
+    throw new Error("Upload failed. Please try again.");
   }
 
-  const doc = await res.json();
+  // 3) Register document with API (server verifies object exists + signature)
+  const docType =
+    mimeType === "application/pdf" && /statement|bank/i.test(file.name) ? "bank_statement" : "receipt";
+  const doc = await api.post<any>(
+    `/businesses/${businessId}/documents`,
+    {
+      type: docType,
+      storageUrl: key,
+      mimeType,
+      size: file.size,
+      relatedTransactionId: relatedTransactionId || undefined,
+    },
+    { timeoutMs: 20_000 }
+  );
   return {
     ...doc,
     url: doc.url || doc.fileUrl || doc.viewUrl || doc.storageUrl,
@@ -95,20 +97,11 @@ export async function updateDocument(
   docId: string,
   dto: { relatedTransactionId?: string | null }
 ): Promise<Document> {
-  const token = getStoredAuthToken();
-  const res = await fetch(`${API_URL}/businesses/${businessId}/documents/${docId}`, {
-    method: "PUT",
-    headers: {
-      Authorization: token ? `Bearer ${token}` : "",
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify(dto),
-  });
-  if (!res.ok) {
-    const text = await res.text();
-    throw new Error(text || "Failed to update document");
-  }
-  const doc = await res.json();
+  const doc = await api.put<any>(
+    `/businesses/${businessId}/documents/${docId}`,
+    dto,
+    { timeoutMs: 20_000 }
+  );
   return {
     ...doc,
     url: doc.url || doc.fileUrl || doc.viewUrl || doc.storageUrl,
@@ -123,13 +116,6 @@ export async function updateDocument(
 }
 
 export async function deleteDocument(businessId: string, docId: string): Promise<void> {
-  const token = getStoredAuthToken();
-  const res = await fetch(`${API_URL}/businesses/${businessId}/documents/${docId}`, {
-    method: "DELETE",
-    headers: {
-      Authorization: token ? `Bearer ${token}` : "",
-    },
-  });
-  if (!res.ok) throw new Error("Failed to delete document");
+  await api.delete(`/businesses/${businessId}/documents/${docId}`, { timeoutMs: 20_000 });
 }
 

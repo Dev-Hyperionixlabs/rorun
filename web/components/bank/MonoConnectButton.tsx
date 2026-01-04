@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { api } from "@/lib/api/bank";
 import { useToast } from "@/components/ui/toast";
 import { Loader2, Link2 } from "lucide-react";
+import { api as http } from "@/lib/api/client";
 
 interface MonoConnectButtonProps {
   businessId: string;
@@ -23,7 +24,7 @@ async function loadMonoScript(): Promise<void> {
   // Mono connect script defines window.Connect (not window.MonoConnect).
   // See: https://connect.withmono.com/connect.js
   if (typeof window === "undefined") return;
-  if (typeof window.Connect === "function" || typeof window.MonoConnect === "function") return;
+  if (window.Connect || window.MonoConnect) return;
 
   // Avoid adding the script tag multiple times
   const existing = Array.from(document.getElementsByTagName("script")).find((s) =>
@@ -43,9 +44,54 @@ async function loadMonoScript(): Promise<void> {
   // Poll briefly for the global to be attached (script can load before attaching globals)
   const started = Date.now();
   while (Date.now() - started < 3000) {
-    if (typeof window.Connect === "function" || typeof window.MonoConnect === "function") return;
+    if (window.Connect || window.MonoConnect) return;
     await new Promise((r) => setTimeout(r, 150));
   }
+}
+
+function resolveMonoConnector(): any | null {
+  const w: any = typeof window !== "undefined" ? window : {};
+  const candidates = [
+    w.Connect,
+    w.MonoConnect,
+    w.Connect?.default,
+    w.MonoConnect?.default,
+    w.Connect?.MonoConnect,
+    w.MonoConnect?.MonoConnect,
+  ].filter(Boolean);
+
+  return candidates[0] || null;
+}
+
+function createMonoInstance(Connector: any, options: any): any | null {
+  if (!Connector) return null;
+
+  // Function export: try `new`, then direct call.
+  if (typeof Connector === "function") {
+    try {
+      return new Connector(options);
+    } catch {
+      try {
+        return Connector(options);
+      } catch {
+        return null;
+      }
+    }
+  }
+
+  // Object export: try init/create factories.
+  if (typeof Connector === "object") {
+    const init = (Connector.init || Connector.create || Connector.connect) as any;
+    if (typeof init === "function") {
+      try {
+        return init(options);
+      } catch {
+        return null;
+      }
+    }
+  }
+
+  return null;
 }
 
 export function MonoConnectButton({
@@ -61,6 +107,8 @@ export function MonoConnectButton({
   const [consentText, setConsentText] = useState("");
   const [consentTextVersion, setConsentTextVersion] = useState("");
   const { addToast } = useToast();
+  const allowNonNg =
+    (process.env.NEXT_PUBLIC_BANK_CONNECT_ALLOW_NON_NG ?? "true").toLowerCase() === "true";
 
   const handleConnectClick = async () => {
     try {
@@ -105,6 +153,29 @@ export function MonoConnectButton({
     setConnecting(true);
 
     try {
+      // Optional geo guard (configurable). Default allows non-NG to attempt connect.
+      let countryCode: string | null = null;
+      try {
+        const geo = await http.get<{ countryCode: string | null; isNG: boolean | null }>(`/geo`, {
+          skipAuth: true,
+          timeoutMs: 6000,
+        });
+        countryCode = geo?.countryCode || null;
+        if (!allowNonNg && geo?.isNG === false) {
+          await api
+            .logConnectAttempt(businessId, {
+              provider: "mono",
+              success: false,
+              reason: "GEO_BLOCK",
+              countryCode: countryCode || undefined,
+            })
+            .catch(() => {});
+          throw new Error("Bank connect is not available in your region. Please use Upload statement.");
+        }
+      } catch {
+        // Best-effort only: do not block on geo failures.
+      }
+
       try {
         await loadMonoScript();
       } catch {
@@ -113,6 +184,7 @@ export function MonoConnectButton({
             provider: "mono",
             success: false,
             reason: "SDK_LOAD_FAIL",
+            countryCode: countryCode || undefined,
           })
           .catch(() => {});
         throw new Error(
@@ -121,27 +193,25 @@ export function MonoConnectButton({
       }
 
       // Mono's script defines `window.Connect` (preferred). Keep backward-compat with `window.MonoConnect`.
-      const ConnectCtor = (typeof window.Connect === "function" ? window.Connect : null) ||
-        (typeof window.MonoConnect === "function" ? window.MonoConnect : null);
-
-      if (!ConnectCtor) {
+      const Connector = resolveMonoConnector();
+      if (!Connector) {
         await api
           .logConnectAttempt(businessId, {
             provider: "mono",
             success: false,
             reason: "SDK_NOT_AVAILABLE",
+            countryCode: countryCode || undefined,
           })
           .catch(() => {});
         throw new Error(
-          "Bank connection SDK loaded but did not initialize. This can happen due to browser extensions or network restrictions. Please use Upload statement or try another browser."
+          "Bank connector loaded but didn't initialize correctly in this browser. Please try Chrome/Safari without content blockers, or use Upload statement."
         );
       }
 
       // Get Mono config again to ensure we have the latest publicKey
       const config = await api.initMono(businessId);
 
-      // Initialize Mono Connect (constructor expects `key`, not `publicKey`)
-      const monoInstance = new ConnectCtor({
+      const monoInstance = createMonoInstance(Connector, {
         key: config.publicKey,
         onSuccess: async (payload: any) => {
           try {
@@ -209,11 +279,24 @@ export function MonoConnectButton({
         },
       });
 
-      // `Connect` requires setup before open; `MonoConnect` legacy may not.
-      try {
-        monoInstance.setup?.();
-      } catch {}
-      monoInstance.open?.();
+      if (!monoInstance) {
+        await api
+          .logConnectAttempt(businessId, {
+            provider: "mono",
+            success: false,
+            reason: "SDK_SHAPE_UNEXPECTED",
+            countryCode: countryCode || undefined,
+          })
+          .catch(() => {});
+        throw new Error(
+          "Bank connector could not start in this browser. Please use Upload statement or try another browser."
+        );
+      }
+
+      // Different SDK shapes use different method names.
+      try { monoInstance.setup?.(); } catch {}
+      try { monoInstance.open?.(); } catch {}
+      try { monoInstance.show?.(); } catch {}
     } catch (error: any) {
       const message = error?.message || "Failed to initialize bank connection";
       addToast({

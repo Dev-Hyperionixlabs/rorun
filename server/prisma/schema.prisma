@@ -47,6 +47,17 @@ model Business {
   tin                   String?
   vatRegistered         Boolean  @default(false)
   estimatedTurnoverBand String?
+  // Business profile fields for legally-precise tax rules (nullable for existing businesses)
+  annualTurnoverNGN        Decimal? @db.Decimal(15, 2)
+  fixedAssetsNGN           Decimal? @db.Decimal(15, 2)
+  employeeCount            Int?
+  accountingYearEndMonth   Int?     // 1–12
+  accountingYearEndDay     Int?     // 1–31
+  isProfessionalServices   Boolean?
+  claimsTaxIncentives      Boolean?
+  isNonResident            Boolean?
+  sellsIntoNigeria         Boolean?
+  einvoicingEnabled        Boolean?
   createdAt             DateTime @default(now())
   updatedAt             DateTime @updatedAt
 
@@ -58,6 +69,8 @@ model Business {
   alerts                Alert[]
   subscriptions         Subscription[]
   invoices              Invoice[]
+  clients               Client[]
+  jobs                  Job[]
   importBatches         ImportBatch[]
   filingPacks           FilingPack[]
   notificationSetting   NotificationSetting?
@@ -78,6 +91,43 @@ model Business {
   bankConnectAttempts  BankConnectAttempt[]
 
   @@map("businesses")
+}
+
+model Client {
+  id         String   @id @default(uuid())
+  businessId String
+  name       String
+  email      String?
+  phone      String?
+  notes      String?  @db.Text
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  business   Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  jobs       Job[]
+  invoices   Invoice[]
+
+  @@index([businessId, createdAt])
+  @@unique([businessId, name])
+  @@map("clients")
+}
+
+model Job {
+  id         String   @id @default(uuid())
+  businessId String
+  clientId   String?
+  title      String
+  notes      String?  @db.Text
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  business   Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  client     Client?  @relation(fields: [clientId], references: [id], onDelete: SetNull)
+  invoices   Invoice[]
+
+  @@index([businessId, createdAt])
+  @@index([clientId])
+  @@map("jobs")
 }
 
 model BankConnectAttempt {
@@ -105,19 +155,21 @@ model Feedback {
   id         String   @id @default(uuid())
   createdAt  DateTime @default(now())
 
+  category   String   @default("bug") // bug|idea|question
   message    String   @db.Text
-  email      String?
+  userEmail  String?  @map("email")
   pageUrl    String?
 
   businessId String?
   userId     String?
 
-  status     String   @default("open") // open|resolved
+  status     String   @default("new") // new|triaged|done (legacy: open|resolved)
   adminNotes String?  @db.Text
 
   business   Business? @relation(fields: [businessId], references: [id], onDelete: SetNull)
   user       User?     @relation(fields: [userId], references: [id], onDelete: SetNull)
 
+  @@index([category])
   @@index([status, createdAt])
   @@index([businessId])
   @@index([userId])
@@ -476,12 +528,15 @@ model Subscription {
 model Invoice {
   id            String   @id @default(uuid())
   businessId    String
+  clientId      String?
+  jobId         String?
   invoiceNumber String
   issueDate     DateTime
   dueDate       DateTime?
-  customerName  String?
-  customerContact String?
+  customerName  String? // legacy (use clientId)
+  customerContact String? // legacy (use clientId)
   status        String   @default("draft") // draft, sent, paid, cancelled
+  subtotalAmount Decimal? @db.Decimal(15, 2)
   totalAmount   Decimal  @db.Decimal(15, 2)
   currency      String   @default("NGN")
   notes         String?  @db.Text
@@ -489,10 +544,14 @@ model Invoice {
   updatedAt     DateTime @updatedAt
 
   business      Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  client        Client?  @relation(fields: [clientId], references: [id], onDelete: SetNull)
+  job           Job?     @relation(fields: [jobId], references: [id], onDelete: SetNull)
   items         InvoiceItem[]
   transactions  Transaction[]
 
   @@index([businessId, invoiceNumber])
+  @@index([businessId, status])
+  @@index([clientId])
   @@map("invoices")
 }
 

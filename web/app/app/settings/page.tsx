@@ -408,6 +408,19 @@ function WorkspaceSettingsSection() {
   const [name, setName] = useState(business?.name || "");
   const [taxYear, setTaxYear] = useState(new Date().getFullYear());
   const [currency] = useState("NGN");
+  const [profile, setProfile] = useState(() => ({
+    vatRegistered: !!(business as any)?.vatRegistered,
+    annualTurnoverNGN: (business as any)?.annualTurnoverNGN ?? "",
+    fixedAssetsNGN: (business as any)?.fixedAssetsNGN ?? "",
+    employeeCount: (business as any)?.employeeCount ?? "",
+    accountingYearEndMonth: (business as any)?.accountingYearEndMonth ?? "",
+    accountingYearEndDay: (business as any)?.accountingYearEndDay ?? "",
+    isProfessionalServices: !!(business as any)?.isProfessionalServices,
+    claimsTaxIncentives: !!(business as any)?.claimsTaxIncentives,
+    isNonResident: !!(business as any)?.isNonResident,
+    sellsIntoNigeria: !!(business as any)?.sellsIntoNigeria,
+    einvoicingEnabled: !!(business as any)?.einvoicingEnabled,
+  }));
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -421,13 +434,30 @@ function WorkspaceSettingsSection() {
     );
   }
 
-  const handleSave = () => {
+  const handleSave = async () => {
     setSaving(true);
     setError(null);
-    updateBusiness(business.id, { name });
-    updateBusinessApi(business.id, { name })
-      .catch((e) => setError(e?.message || "Failed to save workspace"))
-      .finally(() => setSaving(false));
+    try {
+      await updateBusiness(business.id, {
+        name,
+        vatRegistered: !!profile.vatRegistered,
+        annualTurnoverNGN: profile.annualTurnoverNGN === "" ? null : Number(profile.annualTurnoverNGN),
+        fixedAssetsNGN: profile.fixedAssetsNGN === "" ? null : Number(profile.fixedAssetsNGN),
+        employeeCount: profile.employeeCount === "" ? null : Number(profile.employeeCount),
+        accountingYearEndMonth:
+          profile.accountingYearEndMonth === "" ? null : Number(profile.accountingYearEndMonth),
+        accountingYearEndDay: profile.accountingYearEndDay === "" ? null : Number(profile.accountingYearEndDay),
+        isProfessionalServices: !!profile.isProfessionalServices,
+        claimsTaxIncentives: !!profile.claimsTaxIncentives,
+        isNonResident: !!profile.isNonResident,
+        sellsIntoNigeria: !!profile.sellsIntoNigeria,
+        einvoicingEnabled: !!profile.einvoicingEnabled,
+      });
+    } catch (e: any) {
+      setError(e?.message || "Failed to save workspace");
+    } finally {
+      setSaving(false);
+    }
   };
 
   return (
@@ -449,6 +479,126 @@ function WorkspaceSettingsSection() {
         <Field label="Currency">
           <Input value={currency} disabled />
         </Field>
+
+        <div className="mt-2 rounded-lg border border-slate-200 bg-slate-50 p-3">
+          <p className="text-sm font-semibold text-slate-900">Tax profile (for rules + deadlines)</p>
+          <p className="mt-1 text-xs text-slate-600">
+            These fields improve the legal precision of tax rules and obligations. Existing workspaces can leave them blank.
+          </p>
+
+          <div className="mt-3 space-y-3">
+            <ToggleRow
+              label="VAT registered"
+              description="Set true if the business is currently VAT registered."
+              checked={!!profile.vatRegistered}
+              onChange={(v) => setProfile((p) => ({ ...p, vatRegistered: v }))}
+              disabled={saving}
+            />
+
+            <Field label="Annual turnover (₦)">
+              <Input
+                type="number"
+                inputMode="decimal"
+                value={profile.annualTurnoverNGN}
+                onChange={(e) => setProfile((p) => ({ ...p, annualTurnoverNGN: e.target.value }))}
+                placeholder="e.g. 25000000"
+              />
+            </Field>
+
+            <Field label="Fixed assets (₦)">
+              <Input
+                type="number"
+                inputMode="decimal"
+                value={profile.fixedAssetsNGN}
+                onChange={(e) => setProfile((p) => ({ ...p, fixedAssetsNGN: e.target.value }))}
+                placeholder="e.g. 5000000"
+              />
+            </Field>
+
+            <Field label="Employee count">
+              <Input
+                type="number"
+                inputMode="numeric"
+                value={profile.employeeCount}
+                onChange={(e) => setProfile((p) => ({ ...p, employeeCount: e.target.value }))}
+                placeholder="e.g. 12"
+              />
+            </Field>
+
+            <div className="grid gap-3 md:grid-cols-2">
+              <Field label="Accounting year end month">
+                <Select
+                  value={String(profile.accountingYearEndMonth || "")}
+                  onChange={(v) => setProfile((p) => ({ ...p, accountingYearEndMonth: v }))}
+                  options={[
+                    { value: "", label: "Select month…" },
+                    { value: "1", label: "January" },
+                    { value: "2", label: "February" },
+                    { value: "3", label: "March" },
+                    { value: "4", label: "April" },
+                    { value: "5", label: "May" },
+                    { value: "6", label: "June" },
+                    { value: "7", label: "July" },
+                    { value: "8", label: "August" },
+                    { value: "9", label: "September" },
+                    { value: "10", label: "October" },
+                    { value: "11", label: "November" },
+                    { value: "12", label: "December" },
+                  ]}
+                />
+              </Field>
+              <Field label="Accounting year end day (1–31)">
+                <Input
+                  type="number"
+                  inputMode="numeric"
+                  value={profile.accountingYearEndDay}
+                  onChange={(e) => setProfile((p) => ({ ...p, accountingYearEndDay: e.target.value }))}
+                  placeholder="e.g. 31"
+                />
+              </Field>
+            </div>
+
+            <ToggleRow
+              label="Professional services"
+              description="For professional service businesses (consulting, legal, medical, etc)."
+              checked={!!profile.isProfessionalServices}
+              onChange={(v) => setProfile((p) => ({ ...p, isProfessionalServices: v }))}
+              disabled={saving}
+            />
+
+            <ToggleRow
+              label="Claims tax incentives"
+              description="Set true if the business claims incentives (e.g., pioneer status)."
+              checked={!!profile.claimsTaxIncentives}
+              onChange={(v) => setProfile((p) => ({ ...p, claimsTaxIncentives: v }))}
+              disabled={saving}
+            />
+
+            <ToggleRow
+              label="Non-resident business"
+              description="Set true if the business is non-resident."
+              checked={!!profile.isNonResident}
+              onChange={(v) => setProfile((p) => ({ ...p, isNonResident: v }))}
+              disabled={saving}
+            />
+
+            <ToggleRow
+              label="Sells into Nigeria"
+              description="Set true if the business sells into Nigeria (important for VAT rules)."
+              checked={!!profile.sellsIntoNigeria}
+              onChange={(v) => setProfile((p) => ({ ...p, sellsIntoNigeria: v }))}
+              disabled={saving}
+            />
+
+            <ToggleRow
+              label="E-invoicing enabled"
+              description="Set true if the business has enabled e-invoicing requirements."
+              checked={!!profile.einvoicingEnabled}
+              onChange={(v) => setProfile((p) => ({ ...p, einvoicingEnabled: v }))}
+              disabled={saving}
+            />
+          </div>
+        </div>
         <Button
           className="rounded-full bg-emerald-600 text-sm font-semibold hover:bg-emerald-700"
           onClick={handleSave}

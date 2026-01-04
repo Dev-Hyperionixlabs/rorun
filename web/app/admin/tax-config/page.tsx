@@ -20,6 +20,49 @@ import {
   updateAdminTaxRuleSet,
 } from "@/lib/api/admin";
 
+const MONTHS = [
+  { value: "1", label: "January" },
+  { value: "2", label: "February" },
+  { value: "3", label: "March" },
+  { value: "4", label: "April" },
+  { value: "5", label: "May" },
+  { value: "6", label: "June" },
+  { value: "7", label: "July" },
+  { value: "8", label: "August" },
+  { value: "9", label: "September" },
+  { value: "10", label: "October" },
+  { value: "11", label: "November" },
+  { value: "12", label: "December" },
+];
+
+function clampInt(val: string, min: number, max: number): number | null {
+  const n = Number(val);
+  if (!Number.isFinite(n)) return null;
+  if (n < min || n > max) return null;
+  return Math.floor(n);
+}
+
+function validateDeadlineTemplate(input: {
+  frequency: AdminDeadlineTemplate["frequency"];
+  dueDayOfMonth: string;
+  dueMonth: string;
+  dueDay: string;
+}) {
+  const freq = input.frequency;
+  if (freq === "monthly" || freq === "quarterly") {
+    const d = clampInt(input.dueDayOfMonth, 1, 31);
+    if (!d) return "For monthly/quarterly templates, dueDayOfMonth is required (1–31).";
+    return null;
+  }
+  if (freq === "annual" || freq === "one_time") {
+    const m = clampInt(input.dueMonth, 1, 12);
+    const d = clampInt(input.dueDay, 1, 31);
+    if (!m || !d) return "For annual/one_time templates, dueMonth (Jan–Dec) and dueDay (1–31) are required.";
+    return null;
+  }
+  return null;
+}
+
 function safeParseJson(text: string): { ok: true; value: any } | { ok: false; error: string } {
   try {
     if (!text.trim()) return { ok: true, value: {} };
@@ -71,6 +114,72 @@ export default function TaxConfigPage() {
     description: "",
   });
 
+  const presetTemplates = useMemo(
+    () => [
+      {
+        value: "",
+        label: "Preset templates…",
+      },
+      {
+        value: "vat_monthly",
+        label: "VAT Monthly Return (due 21st)",
+        patch: {
+          key: "vat_monthly_return",
+          frequency: "monthly" as const,
+          dueDayOfMonth: "21",
+          dueMonth: "",
+          dueDay: "",
+          offsetDays: "",
+          title: "VAT monthly return",
+          description: "File VAT return for the month.",
+        },
+      },
+      {
+        value: "paye_monthly",
+        label: "PAYE Monthly (due 10th) [placeholder]",
+        patch: {
+          key: "paye_monthly",
+          frequency: "monthly" as const,
+          dueDayOfMonth: "10",
+          dueMonth: "",
+          dueDay: "",
+          offsetDays: "",
+          title: "PAYE monthly remittance",
+          description: "Remit PAYE for the month (placeholder).",
+        },
+      },
+      {
+        value: "cit_annual",
+        label: "CIT Annual Return (Jun 30) [placeholder]",
+        patch: {
+          key: "cit_annual_return",
+          frequency: "annual" as const,
+          dueDayOfMonth: "",
+          dueMonth: "6",
+          dueDay: "30",
+          offsetDays: "",
+          title: "CIT annual return",
+          description: "File company income tax return (placeholder).",
+        },
+      },
+      {
+        value: "vat_einv_milestone",
+        label: "VAT e-invoicing milestone (Jan 31)",
+        patch: {
+          key: "vat_einvoicing_milestone",
+          frequency: "one_time" as const,
+          dueDayOfMonth: "",
+          dueMonth: "1",
+          dueDay: "31",
+          offsetDays: "",
+          title: "VAT e-invoicing milestone",
+          description: "One-time VAT e-invoicing milestone.",
+        },
+      },
+    ],
+    [],
+  );
+
   const [testYear, setTestYear] = useState<number>(new Date().getFullYear());
   const [testProfileJson, setTestProfileJson] = useState(
     JSON.stringify(
@@ -80,6 +189,16 @@ export default function TaxConfigPage() {
         state: "Lagos",
         estimatedTurnoverBand: "small",
         vatRegistered: false,
+        annualTurnoverNGN: 0,
+        fixedAssetsNGN: 0,
+        accountingYearEndMonth: 12,
+        accountingYearEndDay: 31,
+        employeeCount: 0,
+        isProfessionalServices: false,
+        claimsTaxIncentives: false,
+        isNonResident: false,
+        sellsIntoNigeria: false,
+        einvoicingEnabled: false,
       },
       null,
       2,
@@ -483,7 +602,7 @@ export default function TaxConfigPage() {
                             Create rule
                           </Button>
                           <Button size="sm" variant="secondary" onClick={() => setCreatingRule(false)} disabled={busy}>
-                            Cancel
+                      Cancel
                     </Button>
                   </div>
                 </div>
@@ -525,6 +644,40 @@ export default function TaxConfigPage() {
                       <div className="space-y-2 rounded-lg border border-slate-200 p-3">
                         <div className="grid gap-2 md:grid-cols-2">
                           <div className="space-y-1">
+                            <label className="text-xs font-medium text-slate-700">Preset templates</label>
+                            <Select
+                              value=""
+                              onChange={(v) => {
+                                const preset = (presetTemplates as any[]).find((p) => p.value === v);
+                                if (preset?.patch) {
+                                  setNewTemplate((s) => ({ ...s, ...(preset.patch as any) }));
+                                }
+                              }}
+                              options={presetTemplates as any}
+                            />
+                            <div className="text-[11px] text-slate-500">
+                              Presets only fill fields; they do not auto-submit.
+                            </div>
+                          </div>
+                          <div className="space-y-1">
+                            <label className="text-xs font-medium text-slate-700">offsetDays</label>
+                            <div className="flex items-center gap-2">
+                              <Input
+                                value={newTemplate.offsetDays}
+                                onChange={(e) => setNewTemplate((s) => ({ ...s, offsetDays: e.target.value }))}
+                                placeholder="e.g. 0"
+                              />
+                              <span
+                                className="text-slate-500"
+                                title="offsetDays adds N days after the computed base date (monthly/quarterly base is dueDayOfMonth; annual/one_time base is dueMonth+dueDay)."
+                              >
+                                <Info className="h-4 w-4" />
+                              </span>
+                            </div>
+                          </div>
+                        </div>
+                        <div className="grid gap-2 md:grid-cols-2">
+                          <div className="space-y-1">
                             <label className="text-xs font-medium text-slate-700">Key</label>
                             <Input value={newTemplate.key} onChange={(e) => setNewTemplate((s) => ({ ...s, key: e.target.value }))} placeholder="annual_return" />
                           </div>
@@ -540,25 +693,47 @@ export default function TaxConfigPage() {
                                 { value: "one_time", label: "one_time" },
                               ]}
                             />
+                            <div className="text-[11px] text-slate-500">
+                              {newTemplate.frequency === "monthly" || newTemplate.frequency === "quarterly"
+                                ? "Monthly/quarterly: dueDayOfMonth is required. dueMonth/dueDay are ignored."
+                                : "Annual/one_time: dueMonth + dueDay are required. dueDayOfMonth is ignored."}
+                            </div>
                           </div>
                         </div>
                         <div className="grid gap-2 md:grid-cols-4">
                           <div className="space-y-1">
-                            <label className="text-xs font-medium text-slate-700">dueDayOfMonth</label>
+                            <label className="text-xs font-medium text-slate-700">
+                              dueDayOfMonth{" "}
+                              <span
+                                className="inline-flex align-middle text-slate-500"
+                                title="Used for monthly/quarterly templates. Required for monthly in this UI. (1–31)"
+                              >
+                                <Info className="h-3.5 w-3.5" />
+                              </span>
+                            </label>
                             <Input value={newTemplate.dueDayOfMonth} onChange={(e) => setNewTemplate((s) => ({ ...s, dueDayOfMonth: e.target.value }))} placeholder="e.g. 21" />
                           </div>
                           <div className="space-y-1">
-                            <label className="text-xs font-medium text-slate-700">dueMonth</label>
-                            <Input value={newTemplate.dueMonth} onChange={(e) => setNewTemplate((s) => ({ ...s, dueMonth: e.target.value }))} placeholder="e.g. 3" />
+                            <label className="text-xs font-medium text-slate-700">
+                              dueMonth{" "}
+                              <span
+                                className="inline-flex align-middle text-slate-500"
+                                title="Used for annual/one_time templates. Stored as 1–12 (Jan=1)."
+                              >
+                                <Info className="h-3.5 w-3.5" />
+                              </span>
+                            </label>
+                            <Select
+                              value={newTemplate.dueMonth}
+                              onChange={(v) => setNewTemplate((s) => ({ ...s, dueMonth: v }))}
+                              options={[{ value: "", label: "Select month…" }, ...MONTHS]}
+                            />
                           </div>
                           <div className="space-y-1">
                             <label className="text-xs font-medium text-slate-700">dueDay</label>
                             <Input value={newTemplate.dueDay} onChange={(e) => setNewTemplate((s) => ({ ...s, dueDay: e.target.value }))} placeholder="e.g. 31" />
                           </div>
-                          <div className="space-y-1">
-                            <label className="text-xs font-medium text-slate-700">offsetDays</label>
-                            <Input value={newTemplate.offsetDays} onChange={(e) => setNewTemplate((s) => ({ ...s, offsetDays: e.target.value }))} placeholder="e.g. 30" />
-                          </div>
+                          <div className="space-y-1" />
                         </div>
                         <div className="space-y-1">
                           <label className="text-xs font-medium text-slate-700">Title</label>
@@ -576,6 +751,8 @@ export default function TaxConfigPage() {
                           <Button
                             size="sm"
                             onClick={async () => {
+                              const validationError = validateDeadlineTemplate(newTemplate);
+                              if (validationError) return setError(validationError);
                               const aw = safeParseJson(newTemplate.appliesWhenJson);
                               if (!aw.ok) return setError(`AppliesWhen JSON: ${aw.error}`);
                               setBusy(true);

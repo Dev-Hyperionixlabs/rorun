@@ -3,8 +3,9 @@
 import { api } from "./client";
 
 export async function submitFeedback(input: {
+  category?: "bug" | "idea" | "question";
   message: string;
-  email?: string;
+  userEmail?: string;
   pageUrl?: string;
   businessId?: string;
 }) {

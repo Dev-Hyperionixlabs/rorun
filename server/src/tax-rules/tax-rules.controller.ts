@@ -41,6 +41,22 @@ export class TaxRulesController {
     );
   }
 
+  @Get('evaluation')
+  @ApiOperation({ summary: 'Evaluate business against active rule set (read-only, no snapshot)' })
+  @UseGuards(BusinessRoleGuard)
+  @RequireBusinessRoles('owner', 'member', 'accountant')
+  async getEvaluation(
+    @Param('businessId') businessId: string,
+    @Request() req,
+    @Query('taxYear') taxYear?: number,
+  ) {
+    return this.taxRulesService.evaluateBusinessReadOnly(
+      businessId,
+      req.user.id,
+      taxYear ? parseInt(taxYear.toString()) : undefined,
+    );
+  }
+
   @Get('snapshot/latest')
   @ApiOperation({ summary: 'Get latest obligation snapshot for business' })
   @UseGuards(BusinessRoleGuard)

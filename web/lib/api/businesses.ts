@@ -12,6 +12,16 @@ export interface CreateBusinessInput {
   tin?: string;
   vatRegistered?: boolean;
   estimatedTurnoverBand?: string;
+  annualTurnoverNGN?: number;
+  fixedAssetsNGN?: number;
+  employeeCount?: number;
+  accountingYearEndMonth?: number;
+  accountingYearEndDay?: number;
+  isProfessionalServices?: boolean;
+  claimsTaxIncentives?: boolean;
+  isNonResident?: boolean;
+  sellsIntoNigeria?: boolean;
+  einvoicingEnabled?: boolean;
 }
 
 export async function getBusinesses(): Promise<Business[]> {
@@ -33,7 +43,7 @@ export async function updateBusiness(
   id: string,
   data: Partial<CreateBusinessInput>
 ): Promise<Business> {
-  return api.patch(`/businesses/${id}`, data);
+  return api.put(`/businesses/${id}`, data);
 }
 
 export async function deleteBusiness(id: string): Promise<void> {

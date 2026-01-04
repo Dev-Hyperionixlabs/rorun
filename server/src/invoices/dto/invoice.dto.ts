@@ -22,13 +22,18 @@ class InvoiceItemDto {
   @ApiProperty()
   @IsNumber()
   unitPrice: number;
-
-  @ApiProperty()
-  @IsNumber()
-  amount: number;
 }
 
 export class CreateInvoiceDto {
+  @ApiProperty({ description: 'Client ID' })
+  @IsString()
+  clientId: string;
+
+  @ApiProperty({ required: false, description: 'Optional job ID' })
+  @IsString()
+  @IsOptional()
+  jobId?: string;
+
   @ApiProperty()
   @IsDateString()
   issueDate: string;
@@ -38,15 +43,10 @@ export class CreateInvoiceDto {
   @IsOptional()
   dueDate?: string;
 
-  @ApiProperty({ required: false })
+  @ApiProperty({ required: false, default: 'NGN' })
   @IsString()
   @IsOptional()
-  customerName?: string;
-
-  @ApiProperty({ required: false })
-  @IsString()
-  @IsOptional()
-  customerContact?: string;
+  currency?: string;
 
   @ApiProperty({ required: false })
   @IsString()
@@ -62,6 +62,16 @@ export class CreateInvoiceDto {
 
 export class UpdateInvoiceDto {
   @ApiProperty({ required: false })
+  @IsString()
+  @IsOptional()
+  clientId?: string;
+
+  @ApiProperty({ required: false })
+  @IsString()
+  @IsOptional()
+  jobId?: string | null;
+
+  @ApiProperty({ required: false })
   @IsDateString()
   @IsOptional()
   issueDate?: string;
@@ -71,23 +81,25 @@ export class UpdateInvoiceDto {
   @IsOptional()
   dueDate?: string;
 
-  @ApiProperty({ required: false })
-  @IsString()
-  @IsOptional()
-  customerName?: string;
-
-  @ApiProperty({ required: false })
-  @IsString()
-  @IsOptional()
-  customerContact?: string;
-
-  @ApiProperty({ required: false, enum: ['draft', 'sent', 'paid', 'cancelled'] })
-  @IsEnum(['draft', 'sent', 'paid', 'cancelled'])
+  @ApiProperty({ required: false, enum: ['draft', 'sent', 'paid', 'overdue', 'cancelled'] })
+  @IsEnum(['draft', 'sent', 'paid', 'overdue', 'cancelled'])
   @IsOptional()
   status?: string;
+
+  @ApiProperty({ required: false, default: 'NGN' })
+  @IsString()
+  @IsOptional()
+  currency?: string;
 
   @ApiProperty({ required: false })
   @IsString()
   @IsOptional()
   notes?: string;
+
+  @ApiProperty({ required: false, type: [InvoiceItemDto] })
+  @IsArray()
+  @IsOptional()
+  @ValidateNested({ each: true })
+  @Type(() => InvoiceItemDto)
+  items?: InvoiceItemDto[];
 }

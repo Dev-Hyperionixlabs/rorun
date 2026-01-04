@@ -16,8 +16,9 @@ export class FeedbackController {
     // Best-effort: if user is authenticated, attach userId (no hard dependency on auth)
     const userId = req?.user?.id;
     return this.feedbackService.create({
+      category: dto.category,
       message: dto.message,
-      email: dto.email,
+      userEmail: dto.userEmail,
       pageUrl: dto.pageUrl,
       businessId: dto.businessId,
       userId,

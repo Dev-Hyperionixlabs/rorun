@@ -36,9 +36,10 @@ interface ImportLine {
 export function ImportWizard({ businessId, onClose, onSuccess, redirectToReview = false }: ImportWizardProps) {
   const router = useRouter();
   const [step, setStep] = useState<1 | 2 | 3>(1);
-  const [sourceType, setSourceType] = useState<"csv" | "paste">("paste");
+  const [sourceType, setSourceType] = useState<"csv" | "paste" | "pdf">("paste");
   const [rawText, setRawText] = useState("");
   const [csvFile, setCsvFile] = useState<File | null>(null);
+  const [pdfFile, setPdfFile] = useState<File | null>(null);
   const [csvHeaders, setCsvHeaders] = useState<string[]>([]);
   const [csvMapping, setCsvMapping] = useState<{
     date: string;
@@ -98,6 +99,8 @@ export function ImportWizard({ businessId, onClose, onSuccess, redirectToReview 
       !!csvMapping.description &&
       (!!csvMapping.amount || (!!csvMapping.debit && !!csvMapping.credit)));
 
+  const pdfValid = sourceType !== "pdf" || !!pdfFile;
+
   const mappingOptions = useMemo(
     () => [{ value: "", label: "Select…" }, ...csvHeaders.map((h) => ({ value: h, label: h }))],
     [csvHeaders]
@@ -130,13 +133,22 @@ export function ImportWizard({ businessId, onClose, onSuccess, redirectToReview 
       return;
     }
 
+    if (sourceType === "pdf" && !pdfValid) {
+      addToast({
+        title: "PDF required",
+        description: "Please select a PDF statement to upload.",
+        variant: "error",
+      });
+      return;
+    }
+
     setLoading(true);
     try {
       let createDto: any = { sourceType };
       
       if (sourceType === "paste") {
         createDto.rawText = rawText;
-      } else {
+      } else if (sourceType === "csv") {
         // CSV: normalize to a 4-column CSV that backend parser understands: date, description, debit, credit
         const raw = await csvFile!.text();
         const lines = raw.split(/\r?\n/).filter((l) => l.trim().length > 0);
@@ -179,6 +191,12 @@ export function ImportWizard({ businessId, onClose, onSuccess, redirectToReview 
 
         createDto.rawText = out.join("\n");
         createDto.sourceType = "csv";
+      } else {
+        // PDF: upload as Document then create an import batch referencing it.
+        const { uploadDocument } = await import("@/lib/api/documents");
+        const doc = await uploadDocument(businessId, pdfFile!);
+        createDto.documentId = doc.id;
+        createDto.sourceType = "pdf";
       }
 
       const result = await api.post<{ id: string }>(
@@ -191,18 +209,36 @@ export function ImportWizard({ businessId, onClose, onSuccess, redirectToReview 
       // Parse the import
       await api.post(`/businesses/${businessId}/imports/${result.id}/parse`);
       
-      // Fetch the batch with lines
-      const batchData = await api.get<ImportBatch>(
-        `/businesses/${businessId}/imports/${result.id}`
-      );
+      // Fetch the batch with lines (PDF parsing may be async; poll briefly)
+      let batchData: ImportBatch | null = null;
+      for (let i = 0; i < 12; i++) {
+        const b = await api.get<ImportBatch>(`/businesses/${businessId}/imports/${result.id}`);
+        batchData = b;
+        const lines = (b as any)?.lines || [];
+        const status = (b as any)?.status || "";
+        if (lines.length > 0) break;
+        if (status === "failed") break;
+        await new Promise((r) => setTimeout(r, 1000));
+      }
+      if (!batchData) throw new Error("Import batch could not be loaded.");
       
       setBatch(batchData);
       const chosen = new Set(
-        (batchData.lines as any[])
+        ((batchData as any).lines as any[])
           .filter((l) => (l.aiConfidence ?? 0.8) >= 0.75)
           .map((l) => l.id)
       );
-      setSelectedLines(chosen.size ? chosen : new Set(batchData.lines.map((l) => l.id)));
+      const linesArr = ((batchData as any).lines as any[]) || [];
+      if (linesArr.length === 0) {
+        addToast({
+          title: "PDF imported",
+          description:
+            "We couldn’t auto-extract transactions from this PDF yet. Please use Paste statement or Upload CSV for now.",
+          variant: "error",
+        });
+        return;
+      }
+      setSelectedLines(chosen.size ? chosen : new Set(linesArr.map((l) => l.id)));
       setStep(2);
     } catch (e: any) {
       addToast({
@@ -313,6 +349,19 @@ export function ImportWizard({ businessId, onClose, onSuccess, redirectToReview 
                     Upload a CSV file with transactions
                   </div>
                 </button>
+                <button
+                  onClick={() => setSourceType("pdf")}
+                  className={`flex-1 rounded-xl border p-4 text-left ${
+                    sourceType === "pdf"
+                      ? "border-emerald-600 bg-emerald-50"
+                      : "border-slate-200 hover:border-emerald-300"
+                  }`}
+                >
+                  <div className="font-semibold text-sm mb-1">Upload PDF</div>
+                  <div className="text-xs text-slate-600">
+                    Upload a PDF bank statement (best-effort)
+                  </div>
+                </button>
               </div>
 
               {sourceType === "paste" && (
@@ -395,6 +444,23 @@ export function ImportWizard({ businessId, onClose, onSuccess, redirectToReview 
                       )}
                     </div>
                   )}
+                </div>
+              )}
+
+              {sourceType === "pdf" && (
+                <div className="space-y-2">
+                  <label className="text-sm font-medium text-slate-800">
+                    Select PDF statement
+                  </label>
+                  <input
+                    type="file"
+                    accept=".pdf,application/pdf"
+                    onChange={(e) => setPdfFile(e.target.files?.[0] || null)}
+                    className="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm"
+                  />
+                  <p className="text-xs text-slate-500">
+                    If PDF extraction fails, use Paste statement or Upload CSV (most reliable).
+                  </p>
                 </div>
               )}
             </div>

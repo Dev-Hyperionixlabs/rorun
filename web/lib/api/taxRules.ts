@@ -49,6 +49,14 @@ export async function evaluateBusiness(
   return api.post(`/businesses/${businessId}/tax/evaluate${query}`, {});
 }
 
+export async function getTaxEvaluation(
+  businessId: string,
+  taxYear?: number,
+): Promise<{ ruleSet: any; taxYear: number; profile: any; evaluation: any }> {
+  const query = taxYear ? `?taxYear=${taxYear}` : "";
+  return api.get(`/businesses/${businessId}/tax/evaluation${query}`);
+}
+
 export async function getLatestSnapshot(businessId: string): Promise<ObligationSnapshot> {
   return api.get(`/businesses/${businessId}/tax/snapshot/latest`);
 }

@@ -12,7 +12,7 @@ export default function AdminFeedbackPage() {
   const [items, setItems] = useState<AdminFeedback[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [status, setStatus] = useState<"all" | "open" | "resolved">("open");
+  const [status, setStatus] = useState<"all" | "new" | "triaged" | "done">("new");
   const [q, setQ] = useState("");
   const [selected, setSelected] = useState<AdminFeedback | null>(null);
   const [notes, setNotes] = useState("");
@@ -41,7 +41,7 @@ export default function AdminFeedbackPage() {
     const needle = q.trim().toLowerCase();
     if (!needle) return items;
     return items.filter((f) => {
-      const hay = `${f.message} ${f.email || ""} ${f.pageUrl || ""} ${f.businessId || ""} ${f.userId || ""}`.toLowerCase();
+      const hay = `${f.category || ""} ${f.message} ${f.userEmail || ""} ${f.pageUrl || ""} ${f.businessId || ""} ${f.userId || ""}`.toLowerCase();
       return hay.includes(needle);
     });
   }, [items, q]);
@@ -75,8 +75,9 @@ export default function AdminFeedbackPage() {
             value={status}
             onChange={(v) => setStatus(v as any)}
             options={[
-              { value: "open", label: "Open" },
-              { value: "resolved", label: "Resolved" },
+              { value: "new", label: "New" },
+              { value: "triaged", label: "Triaged" },
+              { value: "done", label: "Done" },
               { value: "all", label: "All" },
             ]}
           />
@@ -106,13 +107,22 @@ export default function AdminFeedbackPage() {
                 >
                   <div className="flex items-center justify-between gap-3">
                     <div className="text-xs font-semibold text-slate-900 truncate">
-                      {f.email || "Anonymous"} • {new Date(f.createdAt).toLocaleString()}
+                      {(f.userEmail || "Anonymous")} • {new Date(f.createdAt).toLocaleString()}
                     </div>
-                    <span className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${
-                      f.status === "open" ? "bg-amber-50 text-amber-700" : "bg-emerald-50 text-emerald-700"
-                    }`}>
-                      {f.status.toUpperCase()}
+                    <span
+                      className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${
+                        (f.status || "").toLowerCase() === "done"
+                          ? "bg-emerald-50 text-emerald-700"
+                          : (f.status || "").toLowerCase() === "triaged"
+                            ? "bg-blue-50 text-blue-700"
+                            : "bg-amber-50 text-amber-700"
+                      }`}
+                    >
+                      {(f.status || "new").toUpperCase()}
                     </span>
+                  </div>
+                  <div className="mt-1 text-[11px] text-slate-500">
+                    Category: <span className="font-semibold">{(f.category || "bug").toString()}</span>
                   </div>
                   <div className="mt-1 text-sm text-slate-700 line-clamp-2">{f.message}</div>
                   <div className="mt-2 text-[11px] text-slate-500 truncate">{f.pageUrl || "—"}</div>
@@ -138,7 +148,8 @@ export default function AdminFeedbackPage() {
                   </div>
                 </div>
                 <div className="grid gap-2 text-xs text-slate-600">
-                  <div><span className="text-slate-500">Email:</span> {selected.email || "—"}</div>
+                  <div><span className="text-slate-500">Email:</span> {selected.userEmail || "—"}</div>
+                  <div><span className="text-slate-500">Category:</span> {selected.category || "—"}</div>
                   <div><span className="text-slate-500">Page:</span> {selected.pageUrl || "—"}</div>
                   <div><span className="text-slate-500">Business:</span> {selected.businessId || "—"}</div>
                   <div><span className="text-slate-500">User:</span> {selected.userId || "—"}</div>
@@ -160,7 +171,7 @@ export default function AdminFeedbackPage() {
                       try {
                         const updated = await updateAdminFeedback(selected.id, {
                           adminNotes: notes.trim() || undefined,
-                          status: "resolved",
+                          status: "done",
                         });
                         setSelected(updated);
                         await load();
@@ -170,7 +181,7 @@ export default function AdminFeedbackPage() {
                     }}
                     disabled={saving}
                   >
-                    Mark resolved
+                    Mark done
                   </Button>
                   <Button
                     size="sm"
@@ -180,7 +191,7 @@ export default function AdminFeedbackPage() {
                       try {
                         const updated = await updateAdminFeedback(selected.id, {
                           adminNotes: notes.trim() || undefined,
-                          status: "open",
+                          status: "triaged",
                         });
                         setSelected(updated);
                         await load();
@@ -190,7 +201,27 @@ export default function AdminFeedbackPage() {
                     }}
                     disabled={saving}
                   >
-                    Re-open
+                    Mark triaged
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="secondary"
+                    onClick={async () => {
+                      setSaving(true);
+                      try {
+                        const updated = await updateAdminFeedback(selected.id, {
+                          adminNotes: notes.trim() || undefined,
+                          status: "new",
+                        });
+                        setSelected(updated);
+                        await load();
+                      } finally {
+                        setSaving(false);
+                      }
+                    }}
+                    disabled={saving}
+                  >
+                    Move back to new
                   </Button>
                 </div>
               </>

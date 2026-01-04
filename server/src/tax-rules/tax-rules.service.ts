@@ -61,6 +61,18 @@ export class TaxRulesService {
       tin: business.tin || undefined,
       vatRegistered: business.vatRegistered,
       cacNumber: business.cacNumber || undefined,
+      annualTurnoverNGN:
+        (business as any).annualTurnoverNGN != null ? Number((business as any).annualTurnoverNGN) : undefined,
+      fixedAssetsNGN:
+        (business as any).fixedAssetsNGN != null ? Number((business as any).fixedAssetsNGN) : undefined,
+      accountingYearEndMonth: (business as any).accountingYearEndMonth ?? undefined,
+      accountingYearEndDay: (business as any).accountingYearEndDay ?? undefined,
+      employeeCount: (business as any).employeeCount ?? undefined,
+      isProfessionalServices: (business as any).isProfessionalServices ?? undefined,
+      claimsTaxIncentives: (business as any).claimsTaxIncentives ?? undefined,
+      isNonResident: (business as any).isNonResident ?? undefined,
+      sellsIntoNigeria: (business as any).sellsIntoNigeria ?? undefined,
+      einvoicingEnabled: (business as any).einvoicingEnabled ?? undefined,
     };
 
     // Evaluate rules
@@ -108,6 +120,89 @@ export class TaxRulesService {
 
     return {
       snapshot,
+      evaluation: {
+        outputs: evaluation.outputs,
+        explanations: evaluation.explanations,
+        matchedRules: evaluation.matchedRules,
+      },
+    };
+  }
+
+  /**
+   * Evaluate a business against the active rule set without creating a snapshot.
+   * This is safe for GET endpoints and user-facing refreshes.
+   */
+  async evaluateBusinessReadOnly(businessId: string, userId: string, taxYear?: number) {
+    await this.businessesService.findOne(businessId, userId);
+
+    const activeRuleSet = await this.getActiveRuleSet();
+    if (!activeRuleSet) {
+      throw new NotFoundException('No active tax rule set found');
+    }
+
+    const business = await this.prisma.business.findUnique({ where: { id: businessId } });
+    if (!business) throw new NotFoundException('Business not found');
+
+    const year = taxYear || new Date().getFullYear();
+
+    const profile: BusinessProfileInput = {
+      legalForm: business.legalForm,
+      sector: business.sector || undefined,
+      state: business.state || undefined,
+      estimatedTurnoverBand: business.estimatedTurnoverBand || undefined,
+      tin: business.tin || undefined,
+      vatRegistered: business.vatRegistered,
+      cacNumber: business.cacNumber || undefined,
+      annualTurnoverNGN:
+        (business as any).annualTurnoverNGN != null ? Number((business as any).annualTurnoverNGN) : undefined,
+      fixedAssetsNGN:
+        (business as any).fixedAssetsNGN != null ? Number((business as any).fixedAssetsNGN) : undefined,
+      accountingYearEndMonth: (business as any).accountingYearEndMonth ?? undefined,
+      accountingYearEndDay: (business as any).accountingYearEndDay ?? undefined,
+      employeeCount: (business as any).employeeCount ?? undefined,
+      isProfessionalServices: (business as any).isProfessionalServices ?? undefined,
+      claimsTaxIncentives: (business as any).claimsTaxIncentives ?? undefined,
+      isNonResident: (business as any).isNonResident ?? undefined,
+      sellsIntoNigeria: (business as any).sellsIntoNigeria ?? undefined,
+      einvoicingEnabled: (business as any).einvoicingEnabled ?? undefined,
+    };
+
+    const evaluation = this.engine.evaluateRules(
+      activeRuleSet.rules.map((r) => ({
+        key: r.key,
+        priority: r.priority,
+        conditionsJson: r.conditionsJson,
+        outcomeJson: r.outcomeJson,
+        explanation: r.explanation,
+      })),
+      profile,
+    );
+
+    const deadlines = this.engine.resolveDeadlines(
+      activeRuleSet.deadlineTemplates.map((t) => ({
+        key: t.key,
+        frequency: t.frequency,
+        dueDayOfMonth: t.dueDayOfMonth,
+        dueMonth: t.dueMonth,
+        dueDay: t.dueDay,
+        offsetDays: t.offsetDays,
+        appliesWhenJson: t.appliesWhenJson,
+        title: t.title,
+        description: t.description,
+      })),
+      profile,
+      year,
+    );
+    evaluation.outputs.deadlines = deadlines;
+
+    return {
+      ruleSet: {
+        id: activeRuleSet.id,
+        version: activeRuleSet.version,
+        name: activeRuleSet.name,
+      },
+      taxYear: year,
+      profile,
       evaluation: {
         outputs: evaluation.outputs,
         explanations: evaluation.explanations,

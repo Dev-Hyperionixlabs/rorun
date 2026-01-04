@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useToast } from "@/components/ui/toast";
 import { submitFeedback } from "@/lib/api/feedback";
+import { Select } from "@/components/ui/select";
 
 export function FeedbackModal({
   open,
@@ -18,8 +19,9 @@ export function FeedbackModal({
   businessId?: string | null;
 }) {
   const { addToast } = useToast();
+  const [category, setCategory] = useState<"bug" | "idea" | "question">("bug");
   const [message, setMessage] = useState("");
-  const [email, setEmail] = useState("");
+  const [userEmail, setUserEmail] = useState("");
   const [submitting, setSubmitting] = useState(false);
 
   const canSubmit = useMemo(() => message.trim().length >= 5 && !submitting, [message, submitting]);
@@ -29,8 +31,9 @@ export function FeedbackModal({
     setSubmitting(true);
     try {
       await submitFeedback({
+        category,
         message: message.trim(),
-        email: email.trim() || undefined,
+        userEmail: userEmail.trim() || undefined,
         pageUrl: typeof window !== "undefined" ? window.location.href : undefined,
         businessId: businessId || undefined,
       });
@@ -40,7 +43,8 @@ export function FeedbackModal({
         variant: "success",
       });
       setMessage("");
-      setEmail("");
+      setUserEmail("");
+      setCategory("bug");
       onClose();
     } catch (e: any) {
       addToast({
@@ -76,6 +80,18 @@ export function FeedbackModal({
           </CardHeader>
           <CardContent className="space-y-3">
             <div className="space-y-1">
+              <label className="text-sm font-medium text-slate-800">Category</label>
+              <Select
+                value={category}
+                onChange={(v) => setCategory(v as any)}
+                options={[
+                  { value: "bug", label: "Bug" },
+                  { value: "idea", label: "Idea" },
+                  { value: "question", label: "Question" },
+                ]}
+              />
+            </div>
+            <div className="space-y-1">
               <label className="text-sm font-medium text-slate-800">What happened?</label>
               <textarea
                 className="w-full rounded-md border border-slate-200 bg-white p-2 text-sm"
@@ -94,8 +110,8 @@ export function FeedbackModal({
               <Input
                 inputMode="email"
                 placeholder="you@example.com"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
+                value={userEmail}
+                onChange={(e) => setUserEmail(e.target.value)}
               />
             </div>
 

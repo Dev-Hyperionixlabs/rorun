@@ -423,16 +423,16 @@ export class AuthService {
       });
     }
 
-    await this.auditService.createAuditEvent({
-      businessId: null,
-      actorUserId: null,
+      await this.auditService.createAuditEvent({
+        businessId: null,
+        actorUserId: null,
       action: 'auth.password_reset.direct',
       entityType: 'User',
       entityId: normalizedEmail,
       metaJson: { email: normalizedEmail },
-      ip: ip ? String(ip) : null,
-      userAgent: userAgent ? String(userAgent) : null,
-    });
+        ip: ip ? String(ip) : null,
+        userAgent: userAgent ? String(userAgent) : null,
+      });
 
     return { ok: true };
   }
@@ -483,7 +483,7 @@ export class AuthService {
         }
       }
 
-      if (!user) {
+    if (!user) {
         throw new BadRequestException({
           code: 'LOGIN_FAILED',
           message: 'Could not create/login user. Please verify your details and try again.',
@@ -522,11 +522,11 @@ export class AuthService {
     try {
       // Use lightweight lookup to avoid pulling relations / selecting every column.
       const user = await this.usersService.findAuthUser(userId);
-      if (!user) {
+    if (!user) {
         // Invalid token or user deleted
         return null;
-      }
-      return user;
+    }
+    return user;
     } catch (err: any) {
       // If the DB schema is out of date, auth middleware should not crash with a 500.
       const msg = String(err?.message || err).toLowerCase();

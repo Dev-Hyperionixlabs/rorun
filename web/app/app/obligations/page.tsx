@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import { ErrorState } from "@/components/ui/page-state";
 import { getBusinesses } from "@/lib/api/businesses";
 import { getObligations, generateObligations, Obligation } from "@/lib/api/obligations";
-import { getLatestSnapshot, ObligationSnapshot } from "@/lib/api/taxRules";
+import { getTaxEvaluation } from "@/lib/api/taxRules";
 
 function statusBadge(status: Obligation["status"]) {
   const base = "inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-medium capitalize";
@@ -23,7 +23,7 @@ export default function ObligationsPage() {
 
   const [businessId, setBusinessId] = useState<string | null>(null);
   const [items, setItems] = useState<Obligation[]>([]);
-  const [snapshot, setSnapshot] = useState<ObligationSnapshot | null>(null);
+  const [evaluation, setEvaluation] = useState<any | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
@@ -37,16 +37,16 @@ export default function ObligationsPage() {
     setLoading(true);
     setError(null);
     try {
-      const [obs, snap] = await Promise.all([
+      const [obs, evalRes] = await Promise.all([
         getObligations(id).catch(() => []),
-        getLatestSnapshot(id).catch(() => null),
+        getTaxEvaluation(id, new Date().getFullYear()).catch(() => null),
       ]);
       setItems(obs || []);
-      setSnapshot(snap);
+      setEvaluation(evalRes);
     } catch (e: any) {
       setError(e?.message || "Failed to load obligations.");
       setItems([]);
-      setSnapshot(null);
+      setEvaluation(null);
     } finally {
       setLoading(false);
     }
@@ -108,10 +108,9 @@ export default function ObligationsPage() {
           <p className="text-sm text-slate-500">
             What applies to your business, why it applies, and what’s due next.
           </p>
-          {snapshot?.ruleSetVersion && (
+          {evaluation?.ruleSet?.version && (
             <p className="mt-1 text-xs text-slate-500">
-              Rule set: <span className="font-medium">{snapshot.ruleSetVersion}</span> • Evaluated{" "}
-              {new Date(snapshot.evaluatedAt).toLocaleString()}
+              Rule set: <span className="font-medium">{evaluation.ruleSet.version}</span>
             </p>
           )}
         </div>
@@ -187,7 +186,7 @@ export default function ObligationsPage() {
                   </div>
                 </div>
                 <div className="text-right text-xs text-slate-500">
-                  {snapshot?.explanations?.[`${o.taxType.toLowerCase()}Status`] || ""}
+                  {evaluation?.evaluation?.explanations?.[`${o.taxType.toLowerCase()}Status`] || ""}
                 </div>
               </div>
             ))

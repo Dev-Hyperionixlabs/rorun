@@ -2,10 +2,10 @@ import { ApiProperty } from '@nestjs/swagger';
 import { IsEnum, IsOptional, IsString, MaxLength } from 'class-validator';
 
 export class UpdateFeedbackDto {
-  @ApiProperty({ enum: ['open', 'resolved'], required: false })
-  @IsEnum(['open', 'resolved'])
+  @ApiProperty({ enum: ['new', 'triaged', 'done'], required: false })
+  @IsEnum(['new', 'triaged', 'done'])
   @IsOptional()
-  status?: 'open' | 'resolved';
+  status?: 'new' | 'triaged' | 'done';
 
   @ApiProperty({ required: false })
   @IsString()

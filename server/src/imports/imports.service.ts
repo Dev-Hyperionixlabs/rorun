@@ -3,6 +3,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { BusinessesService } from '../businesses/businesses.service';
 import { TransactionsService } from '../transactions/transactions.service';
 import { AuditService } from '../audit/audit.service';
+import { AiService } from '../ai/ai.service';
 import { CreateImportDto, ApproveImportDto } from './dto/import.dto';
 import { parseCsv, parsePaste } from './import-parser';
 import * as crypto from 'crypto';
@@ -14,6 +15,7 @@ export class ImportsService {
     private businessesService: BusinessesService,
     private transactionsService: TransactionsService,
     private auditService: AuditService,
+    private aiService: AiService,
   ) {}
 
   async createImport(businessId: string, userId: string, dto: CreateImportDto) {
@@ -24,7 +26,7 @@ export class ImportsService {
         businessId,
         documentId: dto.documentId || null,
         source: 'statement',
-        status: 'pending',
+        status: dto.sourceType === 'pdf' ? 'processing' : 'pending',
       },
     });
 
@@ -47,6 +49,9 @@ export class ImportsService {
         where: { id: batch.id },
         data: { status: 'processing' },
       });
+    } else if (dto.sourceType === 'pdf' && dto.documentId) {
+      // Best-effort: PDF parsing is async via AiService (OCR/extraction).
+      // Client will call /parse and poll /:id until lines exist or status=failed.
     }
 
     return batch;
@@ -57,7 +62,7 @@ export class ImportsService {
 
     const batch = await this.prisma.importBatch.findUnique({
       where: { id: batchId },
-      include: { lines: true },
+      include: { lines: true, document: true },
     });
 
     if (!batch || batch.businessId !== businessId) {
@@ -73,9 +78,88 @@ export class ImportsService {
       return batch;
     }
 
-    // Parse based on document or raw text
-    // For now, if it's a paste import, parsing happens in createImport
-    // CSV would be parsed here from document storage
+    // PDF statement parsing (best-effort):
+    // - Trigger AiService processing for the associated Document
+    // - If extracted metadata includes transactions, convert to ImportBatchLine rows
+    if (batch.document && batch.document.mimeType === 'application/pdf') {
+      // Ensure document OCR runs (AiService is best-effort and updates extractedMetadataJson)
+      try {
+        await this.aiService.processDocument(batch.document.id);
+      } catch {
+        // ignore; we'll fall back to empty state
+      }
+
+      const doc = await this.prisma.document.findUnique({
+        where: { id: batch.document.id },
+        select: { extractedMetadataJson: true, ocrStatus: true },
+      });
+
+      const meta: any = (doc as any)?.extractedMetadataJson || null;
+      const candidates: any[] =
+        (Array.isArray(meta?.transactions) ? meta.transactions : null) ||
+        (Array.isArray(meta?.lines) ? meta.lines : null) ||
+        [];
+
+      if (!candidates.length) {
+        // Still processing or unsupported PDF format
+        await this.prisma.importBatch.update({
+          where: { id: batchId },
+          data: { status: (doc as any)?.ocrStatus === 'failed' ? 'failed' : 'processing' },
+        }).catch(() => {});
+        return batch;
+      }
+
+      const toDate = (v: any) => {
+        const d = v ? new Date(v) : null;
+        return d && !Number.isNaN(d.getTime()) ? d : null;
+      };
+      const toAmount = (v: any) => {
+        const n = typeof v === 'number' ? v : Number(String(v ?? '').replace(/[,\s₦$]/g, ''));
+        return Number.isFinite(n) ? n : null;
+      };
+
+      const rows = candidates
+        .map((t) => {
+          const date = toDate(t.date || t.transactionDate || t.postedAt);
+          const amount = toAmount(t.amount || t.value);
+          const desc = String(t.description || t.narration || t.details || '').trim() || null;
+          const dirRaw = String(t.direction || t.type || '').toLowerCase();
+          const direction =
+            dirRaw === 'credit' || dirRaw === 'cr' || dirRaw === 'income'
+              ? 'credit'
+              : dirRaw === 'debit' || dirRaw === 'dr' || dirRaw === 'expense'
+                ? 'debit'
+                : amount != null && amount >= 0
+                  ? 'credit'
+                  : 'debit';
+          if (!date || amount == null) return null;
+          return { date, amount: Math.abs(amount), description: desc, direction };
+        })
+        .filter(Boolean) as Array<{ date: Date; amount: number; description: string | null; direction: string }>;
+
+      if (!rows.length) {
+        await this.prisma.importBatch.update({ where: { id: batchId }, data: { status: 'failed' } }).catch(() => {});
+        return batch;
+      }
+
+      // Replace any existing lines (should be none here)
+      await this.prisma.importBatchLine.deleteMany({ where: { importBatchId: batchId } }).catch(() => {});
+      await this.prisma.importBatchLine.createMany({
+        data: rows.slice(0, 1000).map((r) => ({
+          importBatchId: batchId,
+          date: r.date,
+          description: r.description,
+          amount: r.amount,
+          direction: r.direction,
+        })),
+      });
+      await this.prisma.importBatch.update({ where: { id: batchId }, data: { status: 'parsed' } }).catch(() => {});
+
+      return this.prisma.importBatch.findUnique({
+        where: { id: batchId },
+        include: { lines: true, document: true },
+      });
+    }
 
     return batch;
   }

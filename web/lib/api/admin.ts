@@ -9,7 +9,7 @@ async function adminFetch<T>(path: string, init?: RequestInit): Promise<T> {
   if (!key) throw new ApiError(401, "Admin key missing.", "ADMIN_KEY_MISSING");
 
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 12_000);
+  const timeout = setTimeout(() => controller.abort(), 20_000);
   try {
     const res = await fetch(`${API_BASE}${path}`, {
       ...init,
@@ -219,15 +219,16 @@ export type AdminFeedback = {
   id: string;
   createdAt: string;
   message: string;
-  email: string | null;
+  userEmail: string | null;
   pageUrl: string | null;
   businessId: string | null;
   userId: string | null;
-  status: "open" | "resolved";
+  category: "bug" | "idea" | "question" | string;
+  status: "new" | "triaged" | "done" | string;
   adminNotes: string | null;
 };
 
-export async function getAdminFeedback(params?: { status?: "open" | "resolved"; limit?: number; offset?: number }) {
+export async function getAdminFeedback(params?: { status?: "new" | "triaged" | "done"; limit?: number; offset?: number }) {
   const sp = new URLSearchParams();
   if (params?.status) sp.set("status", params.status);
   if (params?.limit != null) sp.set("limit", String(params.limit));
@@ -236,7 +237,10 @@ export async function getAdminFeedback(params?: { status?: "open" | "resolved"; 
   return adminFetch<{ items: AdminFeedback[]; total: number; skip: number; take: number }>(`/admin/feedback${suffix}`);
 }
 
-export async function updateAdminFeedback(id: string, input: { status?: "open" | "resolved"; adminNotes?: string }) {
+export async function updateAdminFeedback(
+  id: string,
+  input: { status?: "new" | "triaged" | "done"; adminNotes?: string },
+) {
   return adminFetch<AdminFeedback>(`/admin/feedback/${id}`, {
     method: "PATCH",
     headers: { "Content-Type": "application/json" },

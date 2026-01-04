@@ -17,6 +17,8 @@ import { DevicesModule } from './devices/devices.module';
 import { PlansModule } from './plans/plans.module';
 import { SubscriptionsModule } from './subscriptions/subscriptions.module';
 import { InvoicesModule } from './invoices/invoices.module';
+import { ClientsModule } from './clients/clients.module';
+import { JobsModule } from './jobs/jobs.module';
 import { AdminModule } from './admin/admin.module';
 import { StorageModule } from './storage/storage.module';
 import { NotificationModule } from './notification/notification.module';
@@ -70,6 +72,8 @@ import { APP_GUARD } from '@nestjs/core';
     PlansModule,
     SubscriptionsModule,
     InvoicesModule,
+    ClientsModule,
+    JobsModule,
     AdminModule,
     StorageModule,
     NotificationModule,
