@@ -8,6 +8,7 @@ import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
 import { Button } from "@/components/ui/button";
+import { Textarea } from "@/components/ui/textarea";
 import { useMockApi } from "@/lib/mock-api";
 import { FEATURE_LABELS, PLANS, PlanFeatureKey, PlanId } from "@/lib/plans";
 import clsx from "clsx";
@@ -405,6 +406,7 @@ function ProfileSettingsSection() {
 function WorkspaceSettingsSection() {
   const { businesses, updateBusiness } = useMockApi();
   const business = businesses[0];
+  const { addToast } = useToast();
   const [name, setName] = useState(business?.name || "");
   const [taxYear, setTaxYear] = useState(new Date().getFullYear());
   const [currency] = useState("NGN");
@@ -421,8 +423,44 @@ function WorkspaceSettingsSection() {
     sellsIntoNigeria: !!(business as any)?.sellsIntoNigeria,
     einvoicingEnabled: !!(business as any)?.einvoicingEnabled,
   }));
+
+  const [invoiceConfig, setInvoiceConfig] = useState(() => {
+    const vatRegistered = !!(business as any)?.vatRegistered;
+    const defaultTaxType = (business as any)?.defaultTaxType ?? (vatRegistered ? "vat" : "none");
+    const defaultTaxRate = (business as any)?.defaultTaxRate;
+    const defaultTaxRatePct =
+      defaultTaxRate === null || defaultTaxRate === undefined
+        ? vatRegistered
+          ? "7.5"
+          : ""
+        : String(Number(defaultTaxRate) * 100);
+    const defaultTaxLabel = (business as any)?.defaultTaxLabel ?? (vatRegistered ? "VAT" : "");
+
+    return {
+      invoiceDisplayName: (business as any)?.invoiceDisplayName ?? "",
+      invoiceLogoUrl: (business as any)?.invoiceLogoUrl ?? "",
+      invoiceAddressLine1: (business as any)?.invoiceAddressLine1 ?? "",
+      invoiceAddressLine2: (business as any)?.invoiceAddressLine2 ?? "",
+      invoiceCity: (business as any)?.invoiceCity ?? "",
+      invoiceState: (business as any)?.invoiceState ?? "",
+      invoiceCountry: (business as any)?.invoiceCountry ?? "Nigeria",
+      invoicePostalCode: (business as any)?.invoicePostalCode ?? "",
+      invoiceFooterNote: (business as any)?.invoiceFooterNote ?? "",
+      invoiceTemplateKey: (business as any)?.invoiceTemplateKey ?? "classic",
+      paymentBankName: (business as any)?.paymentBankName ?? "",
+      paymentAccountName: (business as any)?.paymentAccountName ?? "",
+      paymentAccountNumber: (business as any)?.paymentAccountNumber ?? "",
+      paymentInstructionsNote: (business as any)?.paymentInstructionsNote ?? "",
+      defaultTaxType,
+      defaultTaxRatePct,
+      defaultTaxLabel,
+    };
+  });
+
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [savingInvoice, setSavingInvoice] = useState(false);
+  const [invoiceError, setInvoiceError] = useState<string | null>(null);
 
   if (!business) {
     return (
@@ -457,6 +495,65 @@ function WorkspaceSettingsSection() {
       setError(e?.message || "Failed to save workspace");
     } finally {
       setSaving(false);
+    }
+  };
+
+  const handleSaveInvoiceSettings = async () => {
+    setSavingInvoice(true);
+    setInvoiceError(null);
+
+    try {
+      const template = (invoiceConfig.invoiceTemplateKey || "classic").toLowerCase();
+      if (!["classic", "modern", "minimal"].includes(template)) {
+        throw new Error("Template must be Classic, Modern, or Minimal.");
+      }
+
+      const taxType = (invoiceConfig.defaultTaxType || "none").toLowerCase();
+      if (!["none", "vat", "wht", "custom"].includes(taxType)) {
+        throw new Error("Default tax type must be none, VAT, WHT, or custom.");
+      }
+
+      let taxRateDecimal: number | null = null;
+      if (taxType !== "none") {
+        const pctRaw = (invoiceConfig.defaultTaxRatePct || "").trim();
+        const pct = pctRaw === "" ? NaN : Number(pctRaw);
+        if (!Number.isFinite(pct) || pct < 0 || pct > 100) {
+          throw new Error("Tax rate must be a valid percentage between 0 and 100.");
+        }
+        taxRateDecimal = pct / 100;
+      }
+
+      await updateBusiness(business.id, {
+        invoiceDisplayName: invoiceConfig.invoiceDisplayName.trim() || null,
+        invoiceLogoUrl: invoiceConfig.invoiceLogoUrl.trim() || null,
+        invoiceAddressLine1: invoiceConfig.invoiceAddressLine1.trim() || null,
+        invoiceAddressLine2: invoiceConfig.invoiceAddressLine2.trim() || null,
+        invoiceCity: invoiceConfig.invoiceCity.trim() || null,
+        invoiceState: invoiceConfig.invoiceState.trim() || null,
+        invoiceCountry: invoiceConfig.invoiceCountry.trim() || null,
+        invoicePostalCode: invoiceConfig.invoicePostalCode.trim() || null,
+        invoiceFooterNote: invoiceConfig.invoiceFooterNote.trim() || null,
+        invoiceTemplateKey: template as any,
+        paymentBankName: invoiceConfig.paymentBankName.trim() || null,
+        paymentAccountName: invoiceConfig.paymentAccountName.trim() || null,
+        paymentAccountNumber: invoiceConfig.paymentAccountNumber.trim() || null,
+        paymentInstructionsNote: invoiceConfig.paymentInstructionsNote.trim() || null,
+        defaultTaxType: taxType as any,
+        defaultTaxRate: taxType === "none" ? null : taxRateDecimal,
+        defaultTaxLabel: taxType === "none" ? null : (invoiceConfig.defaultTaxLabel.trim() || null),
+      });
+
+      addToast({
+        title: "Invoice settings saved",
+        description: "Your invoice branding and defaults were updated.",
+        variant: "success",
+      });
+    } catch (e: any) {
+      const msg = e?.message || "Failed to save invoice settings";
+      setInvoiceError(msg);
+      addToast({ title: "Couldn’t save invoice settings", description: msg, variant: "error" });
+    } finally {
+      setSavingInvoice(false);
     }
   };
 
@@ -599,6 +696,235 @@ function WorkspaceSettingsSection() {
             />
           </div>
         </div>
+
+        <div className="mt-2 rounded-lg border border-slate-200 bg-slate-50 p-3">
+          <p className="text-sm font-semibold text-slate-900">Invoices</p>
+          <p className="mt-1 text-xs text-slate-600">
+            Configure invoice branding, template, payment instructions, and default tax settings.
+          </p>
+
+          <div className="mt-3 space-y-4">
+            {/* A) Branding */}
+            <div className="rounded-lg border border-slate-200 bg-white p-3">
+              <p className="text-xs font-semibold text-slate-800">Invoice branding</p>
+              <p className="mt-1 text-[11px] text-slate-500">
+                Display name falls back to your workspace name if left blank.
+              </p>
+
+              <div className="mt-3 space-y-3">
+                <Field label="Invoice display name">
+                  <Input
+                    value={invoiceConfig.invoiceDisplayName}
+                    onChange={(e) => setInvoiceConfig((p) => ({ ...p, invoiceDisplayName: e.target.value }))}
+                    placeholder={business.name}
+                  />
+                </Field>
+                <Field label="Logo URL (optional)">
+                  <Input
+                    value={invoiceConfig.invoiceLogoUrl}
+                    onChange={(e) => setInvoiceConfig((p) => ({ ...p, invoiceLogoUrl: e.target.value }))}
+                    placeholder="https://…"
+                  />
+                </Field>
+
+                <Field label="Address line 1">
+                  <Input
+                    value={invoiceConfig.invoiceAddressLine1}
+                    onChange={(e) => setInvoiceConfig((p) => ({ ...p, invoiceAddressLine1: e.target.value }))}
+                    placeholder="Street address"
+                  />
+                </Field>
+                <Field label="Address line 2">
+                  <Input
+                    value={invoiceConfig.invoiceAddressLine2}
+                    onChange={(e) => setInvoiceConfig((p) => ({ ...p, invoiceAddressLine2: e.target.value }))}
+                    placeholder="Suite, floor, etc. (optional)"
+                  />
+                </Field>
+                <div className="grid gap-3 md:grid-cols-2">
+                  <Field label="City">
+                    <Input
+                      value={invoiceConfig.invoiceCity}
+                      onChange={(e) => setInvoiceConfig((p) => ({ ...p, invoiceCity: e.target.value }))}
+                      placeholder="e.g. Lagos"
+                    />
+                  </Field>
+                  <Field label="State">
+                    <Input
+                      value={invoiceConfig.invoiceState}
+                      onChange={(e) => setInvoiceConfig((p) => ({ ...p, invoiceState: e.target.value }))}
+                      placeholder="e.g. Lagos"
+                    />
+                  </Field>
+                </div>
+                <div className="grid gap-3 md:grid-cols-2">
+                  <Field label="Country">
+                    <Input
+                      value={invoiceConfig.invoiceCountry}
+                      onChange={(e) => setInvoiceConfig((p) => ({ ...p, invoiceCountry: e.target.value }))}
+                      placeholder="Nigeria"
+                    />
+                  </Field>
+                  <Field label="Postal code">
+                    <Input
+                      value={invoiceConfig.invoicePostalCode}
+                      onChange={(e) => setInvoiceConfig((p) => ({ ...p, invoicePostalCode: e.target.value }))}
+                      placeholder="e.g. 100001"
+                    />
+                  </Field>
+                </div>
+                <div className="space-y-1">
+                  <label className="text-sm font-medium text-slate-800">Footer note (optional)</label>
+                  <Textarea
+                    value={invoiceConfig.invoiceFooterNote}
+                    onChange={(e) => setInvoiceConfig((p) => ({ ...p, invoiceFooterNote: e.target.value }))}
+                    placeholder="e.g. Thank you for your business."
+                  />
+                </div>
+              </div>
+            </div>
+
+            {/* B) Template default */}
+            <div className="rounded-lg border border-slate-200 bg-white p-3">
+              <p className="text-xs font-semibold text-slate-800">Invoice template</p>
+              <p className="mt-1 text-[11px] text-slate-500">
+                Choose a default layout. This will affect PDF/export later.
+              </p>
+
+              <div className="mt-3 grid gap-2 md:grid-cols-3">
+                {([
+                  { key: "classic", label: "Classic" },
+                  { key: "modern", label: "Modern" },
+                  { key: "minimal", label: "Minimal" },
+                ] as const).map((t) => {
+                  const active = (invoiceConfig.invoiceTemplateKey || "classic") === t.key;
+                  return (
+                    <button
+                      key={t.key}
+                      type="button"
+                      onClick={() => setInvoiceConfig((p) => ({ ...p, invoiceTemplateKey: t.key }))}
+                      className={clsx(
+                        "rounded-xl border p-3 text-left transition",
+                        active ? "border-emerald-500 bg-emerald-50" : "border-slate-200 hover:border-slate-300"
+                      )}
+                    >
+                      <div className="mb-2 rounded-lg border border-slate-200 bg-white p-2">
+                        <div className="h-2 w-1/2 rounded bg-slate-200" />
+                        <div className="mt-2 h-2 w-full rounded bg-slate-100" />
+                        <div className="mt-1 h-2 w-5/6 rounded bg-slate-100" />
+                        <div className="mt-3 h-6 w-full rounded bg-slate-100" />
+                      </div>
+                      <p className="text-sm font-semibold text-slate-900">{t.label}</p>
+                      <p className="mt-1 text-[11px] text-slate-500">
+                        {t.key === "classic"
+                          ? "Balanced and familiar."
+                          : t.key === "modern"
+                          ? "Clean, bold header."
+                          : "Lightweight and simple."}
+                      </p>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* C) Payment instructions */}
+            <div className="rounded-lg border border-slate-200 bg-white p-3">
+              <p className="text-xs font-semibold text-slate-800">Payment instructions</p>
+              <p className="mt-1 text-[11px] text-slate-500">
+                These will be displayed on invoice views and PDFs later.
+              </p>
+
+              <div className="mt-3 space-y-3">
+                <Field label="Bank name">
+                  <Input
+                    value={invoiceConfig.paymentBankName}
+                    onChange={(e) => setInvoiceConfig((p) => ({ ...p, paymentBankName: e.target.value }))}
+                    placeholder="e.g. GTBank"
+                  />
+                </Field>
+                <Field label="Account name">
+                  <Input
+                    value={invoiceConfig.paymentAccountName}
+                    onChange={(e) => setInvoiceConfig((p) => ({ ...p, paymentAccountName: e.target.value }))}
+                    placeholder="e.g. Rorun Tax Ltd"
+                  />
+                </Field>
+                <Field label="Account number">
+                  <Input
+                    inputMode="numeric"
+                    value={invoiceConfig.paymentAccountNumber}
+                    onChange={(e) => setInvoiceConfig((p) => ({ ...p, paymentAccountNumber: e.target.value }))}
+                    placeholder="e.g. 0123456789"
+                  />
+                </Field>
+                <div className="space-y-1">
+                  <label className="text-sm font-medium text-slate-800">Payment note (optional)</label>
+                  <Textarea
+                    value={invoiceConfig.paymentInstructionsNote}
+                    onChange={(e) => setInvoiceConfig((p) => ({ ...p, paymentInstructionsNote: e.target.value }))}
+                    placeholder="e.g. Transfer to the account above and send proof."
+                  />
+                </div>
+              </div>
+            </div>
+
+            {/* D) Tax defaults */}
+            <div className="rounded-lg border border-slate-200 bg-white p-3">
+              <p className="text-xs font-semibold text-slate-800">Tax defaults</p>
+              <p className="mt-1 text-[11px] text-slate-500">
+                Prefills new invoices. You can override per invoice later.
+              </p>
+
+              <div className="mt-3 space-y-3">
+                <Field label="Default tax type">
+                  <Select
+                    value={String(invoiceConfig.defaultTaxType || "none")}
+                    onChange={(v) => setInvoiceConfig((p) => ({ ...p, defaultTaxType: v }))}
+                    options={[
+                      { value: "none", label: "None" },
+                      { value: "vat", label: "VAT" },
+                      { value: "wht", label: "WHT" },
+                      { value: "custom", label: "Custom" },
+                    ]}
+                  />
+                </Field>
+
+                {(invoiceConfig.defaultTaxType || "none") !== "none" && (
+                  <>
+                    <Field label="Default tax rate (%)">
+                      <Input
+                        type="number"
+                        inputMode="decimal"
+                        value={invoiceConfig.defaultTaxRatePct}
+                        onChange={(e) => setInvoiceConfig((p) => ({ ...p, defaultTaxRatePct: e.target.value }))}
+                        placeholder="e.g. 7.5"
+                      />
+                    </Field>
+                    <Field label="Default tax label">
+                      <Input
+                        value={invoiceConfig.defaultTaxLabel}
+                        onChange={(e) => setInvoiceConfig((p) => ({ ...p, defaultTaxLabel: e.target.value }))}
+                        placeholder="e.g. VAT"
+                      />
+                    </Field>
+                  </>
+                )}
+              </div>
+            </div>
+
+            <Button
+              variant="secondary"
+              className="rounded-full"
+              onClick={handleSaveInvoiceSettings}
+              disabled={savingInvoice}
+            >
+              {savingInvoice ? "Saving…" : "Save invoice settings"}
+            </Button>
+            {invoiceError && <p className="text-xs font-semibold text-rose-600">{invoiceError}</p>}
+          </div>
+        </div>
+
         <Button
           className="rounded-full bg-emerald-600 text-sm font-semibold hover:bg-emerald-700"
           onClick={handleSave}
