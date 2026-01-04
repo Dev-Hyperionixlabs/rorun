@@ -58,6 +58,32 @@ model Business {
   isNonResident            Boolean?
   sellsIntoNigeria         Boolean?
   einvoicingEnabled        Boolean?
+
+  // --- Invoicing: Business-level invoice configuration (nullable; used for PDF + on-screen views later) ---
+  // Invoice branding (nullable; uses existing business.name as fallback)
+  invoiceDisplayName      String?
+  invoiceLogoUrl          String?
+  invoiceAddressLine1     String?
+  invoiceAddressLine2     String?
+  invoiceCity             String?
+  invoiceState            String?
+  invoiceCountry          String?  @default("Nigeria")
+  invoicePostalCode       String?
+  invoiceFooterNote       String?  @db.Text
+
+  // Template default
+  invoiceTemplateKey      String?  @default("classic") // classic | modern | minimal
+
+  // Payment instructions
+  paymentBankName         String?
+  paymentAccountName      String?
+  paymentAccountNumber    String?
+  paymentInstructionsNote String?  @db.Text
+
+  // Tax defaults (prefill new invoice creation)
+  defaultTaxType          String?  @default("none") // none | vat | wht | custom
+  defaultTaxRate          Decimal? @db.Decimal(6, 4) // e.g. 0.0750 for 7.5%
+  defaultTaxLabel         String?
   createdAt             DateTime @default(now())
   updatedAt             DateTime @updatedAt
 

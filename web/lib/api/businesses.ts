@@ -22,6 +22,25 @@ export interface CreateBusinessInput {
   isNonResident?: boolean;
   sellsIntoNigeria?: boolean;
   einvoicingEnabled?: boolean;
+
+  // Invoicing config (business-level defaults)
+  invoiceDisplayName?: string | null;
+  invoiceLogoUrl?: string | null;
+  invoiceAddressLine1?: string | null;
+  invoiceAddressLine2?: string | null;
+  invoiceCity?: string | null;
+  invoiceState?: string | null;
+  invoiceCountry?: string | null;
+  invoicePostalCode?: string | null;
+  invoiceFooterNote?: string | null;
+  invoiceTemplateKey?: "classic" | "modern" | "minimal" | null;
+  paymentBankName?: string | null;
+  paymentAccountName?: string | null;
+  paymentAccountNumber?: string | null;
+  paymentInstructionsNote?: string | null;
+  defaultTaxType?: "none" | "vat" | "wht" | "custom" | null;
+  defaultTaxRate?: number | null; // decimal in [0,1]
+  defaultTaxLabel?: string | null;
 }
 
 export async function getBusinesses(): Promise<Business[]> {

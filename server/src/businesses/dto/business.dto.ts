@@ -1,5 +1,8 @@
-import { IsString, IsOptional, IsBoolean, IsInt, IsNumber, Min, Max } from 'class-validator';
+import { IsString, IsOptional, IsBoolean, IsInt, IsNumber, Min, Max, IsIn } from 'class-validator';
 import { ApiProperty } from '@nestjs/swagger';
+
+const INVOICE_TEMPLATES = ['classic', 'modern', 'minimal'] as const;
+const DEFAULT_TAX_TYPES = ['none', 'vat', 'wht', 'custom'] as const;
 
 export class CreateBusinessDto {
   @ApiProperty()
@@ -95,6 +98,94 @@ export class CreateBusinessDto {
   @IsBoolean()
   @IsOptional()
   einvoicingEnabled?: boolean;
+
+  // --- Invoice config (business-level defaults; all optional) ---
+  @ApiProperty({ required: false, description: 'Invoice display name (overrides business.name)' })
+  @IsString()
+  @IsOptional()
+  invoiceDisplayName?: string;
+
+  @ApiProperty({ required: false, description: 'Invoice logo URL' })
+  @IsString()
+  @IsOptional()
+  invoiceLogoUrl?: string;
+
+  @ApiProperty({ required: false })
+  @IsString()
+  @IsOptional()
+  invoiceAddressLine1?: string;
+
+  @ApiProperty({ required: false })
+  @IsString()
+  @IsOptional()
+  invoiceAddressLine2?: string;
+
+  @ApiProperty({ required: false })
+  @IsString()
+  @IsOptional()
+  invoiceCity?: string;
+
+  @ApiProperty({ required: false })
+  @IsString()
+  @IsOptional()
+  invoiceState?: string;
+
+  @ApiProperty({ required: false, default: 'Nigeria' })
+  @IsString()
+  @IsOptional()
+  invoiceCountry?: string;
+
+  @ApiProperty({ required: false })
+  @IsString()
+  @IsOptional()
+  invoicePostalCode?: string;
+
+  @ApiProperty({ required: false, description: 'Footer note on invoices' })
+  @IsString()
+  @IsOptional()
+  invoiceFooterNote?: string;
+
+  @ApiProperty({ required: false, default: 'classic', enum: INVOICE_TEMPLATES })
+  @IsIn(INVOICE_TEMPLATES as any)
+  @IsOptional()
+  invoiceTemplateKey?: string;
+
+  @ApiProperty({ required: false })
+  @IsString()
+  @IsOptional()
+  paymentBankName?: string;
+
+  @ApiProperty({ required: false })
+  @IsString()
+  @IsOptional()
+  paymentAccountName?: string;
+
+  @ApiProperty({ required: false })
+  @IsString()
+  @IsOptional()
+  paymentAccountNumber?: string;
+
+  @ApiProperty({ required: false, description: 'Freeform payment instructions note' })
+  @IsString()
+  @IsOptional()
+  paymentInstructionsNote?: string;
+
+  @ApiProperty({ required: false, default: 'none', enum: DEFAULT_TAX_TYPES })
+  @IsIn(DEFAULT_TAX_TYPES as any)
+  @IsOptional()
+  defaultTaxType?: string;
+
+  @ApiProperty({ required: false, description: 'Decimal rate in [0,1], e.g. 0.075 for 7.5%' })
+  @IsNumber()
+  @Min(0)
+  @Max(1)
+  @IsOptional()
+  defaultTaxRate?: number;
+
+  @ApiProperty({ required: false, description: 'Default tax label (e.g., VAT)' })
+  @IsString()
+  @IsOptional()
+  defaultTaxLabel?: string;
 }
 
 export class UpdateBusinessDto {
@@ -192,4 +283,92 @@ export class UpdateBusinessDto {
   @IsBoolean()
   @IsOptional()
   einvoicingEnabled?: boolean;
+
+  // --- Invoice config (business-level defaults; all optional) ---
+  @ApiProperty({ required: false, description: 'Invoice display name (overrides business.name)' })
+  @IsString()
+  @IsOptional()
+  invoiceDisplayName?: string;
+
+  @ApiProperty({ required: false, description: 'Invoice logo URL' })
+  @IsString()
+  @IsOptional()
+  invoiceLogoUrl?: string;
+
+  @ApiProperty({ required: false })
+  @IsString()
+  @IsOptional()
+  invoiceAddressLine1?: string;
+
+  @ApiProperty({ required: false })
+  @IsString()
+  @IsOptional()
+  invoiceAddressLine2?: string;
+
+  @ApiProperty({ required: false })
+  @IsString()
+  @IsOptional()
+  invoiceCity?: string;
+
+  @ApiProperty({ required: false })
+  @IsString()
+  @IsOptional()
+  invoiceState?: string;
+
+  @ApiProperty({ required: false, default: 'Nigeria' })
+  @IsString()
+  @IsOptional()
+  invoiceCountry?: string;
+
+  @ApiProperty({ required: false })
+  @IsString()
+  @IsOptional()
+  invoicePostalCode?: string;
+
+  @ApiProperty({ required: false, description: 'Footer note on invoices' })
+  @IsString()
+  @IsOptional()
+  invoiceFooterNote?: string;
+
+  @ApiProperty({ required: false, default: 'classic', enum: INVOICE_TEMPLATES })
+  @IsIn(INVOICE_TEMPLATES as any)
+  @IsOptional()
+  invoiceTemplateKey?: string;
+
+  @ApiProperty({ required: false })
+  @IsString()
+  @IsOptional()
+  paymentBankName?: string;
+
+  @ApiProperty({ required: false })
+  @IsString()
+  @IsOptional()
+  paymentAccountName?: string;
+
+  @ApiProperty({ required: false })
+  @IsString()
+  @IsOptional()
+  paymentAccountNumber?: string;
+
+  @ApiProperty({ required: false, description: 'Freeform payment instructions note' })
+  @IsString()
+  @IsOptional()
+  paymentInstructionsNote?: string;
+
+  @ApiProperty({ required: false, default: 'none', enum: DEFAULT_TAX_TYPES })
+  @IsIn(DEFAULT_TAX_TYPES as any)
+  @IsOptional()
+  defaultTaxType?: string;
+
+  @ApiProperty({ required: false, description: 'Decimal rate in [0,1], e.g. 0.075 for 7.5%' })
+  @IsNumber()
+  @Min(0)
+  @Max(1)
+  @IsOptional()
+  defaultTaxRate?: number;
+
+  @ApiProperty({ required: false, description: 'Default tax label (e.g., VAT)' })
+  @IsString()
+  @IsOptional()
+  defaultTaxLabel?: string;
 }
