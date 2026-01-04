@@ -6,13 +6,17 @@ import { BusinessRoleGuard, RequireBusinessRoles } from '../auth/guards/business
 import { CreateInvoiceDto, UpdateInvoiceDto } from './dto/invoice.dto';
 import { Response } from 'express';
 import { renderInvoicePdf } from './invoice-pdf';
+import { StorageService } from '../storage/storage.service';
 
 @ApiTags('invoices')
 @Controller('businesses/:businessId/invoices')
 @UseGuards(JwtAuthGuard, BusinessRoleGuard)
 @ApiBearerAuth()
 export class InvoicesController {
-  constructor(private readonly invoicesService: InvoicesService) {}
+  constructor(
+    private readonly invoicesService: InvoicesService,
+    private readonly storageService: StorageService,
+  ) {}
 
   @Post()
   @ApiOperation({ summary: 'Create a new invoice' })
@@ -57,6 +61,17 @@ export class InvoicesController {
     const safeTemplate =
       templateKey === 'modern' || templateKey === 'minimal' || templateKey === 'classic' ? templateKey : 'classic';
 
+    // Resolve logo URL: if stored as a storage key, sign it for fetch.
+    let resolvedLogoUrl: string | null = (business.invoiceLogoUrl || null) as any;
+    try {
+      if (resolvedLogoUrl && typeof resolvedLogoUrl === 'string' && resolvedLogoUrl.startsWith('businesses/')) {
+        resolvedLogoUrl = await this.storageService.getSignedDownloadUrl(resolvedLogoUrl, 600);
+      }
+    } catch {
+      // ignore; pdf generation will proceed without a logo
+      resolvedLogoUrl = null;
+    }
+
     let buf: Buffer;
     try {
       buf = await renderInvoicePdf({
@@ -64,7 +79,7 @@ export class InvoicesController {
         business: {
           name: business.name,
           invoiceDisplayName: business.invoiceDisplayName,
-          invoiceLogoUrl: business.invoiceLogoUrl,
+          invoiceLogoUrl: resolvedLogoUrl,
           invoiceAddressLine1: business.invoiceAddressLine1,
           invoiceAddressLine2: business.invoiceAddressLine2,
           invoiceCity: business.invoiceCity,

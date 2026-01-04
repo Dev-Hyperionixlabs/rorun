@@ -25,6 +25,7 @@ import {
 } from "@/lib/api/notifications";
 import { useFeatures } from "@/hooks/use-features";
 import { Lock } from "lucide-react";
+import { API_BASE, authHeaders } from "@/lib/api/client";
 
 const tabs = [
   { id: "plan", label: "Plan" },
@@ -461,6 +462,10 @@ function WorkspaceSettingsSection() {
   const [error, setError] = useState<string | null>(null);
   const [savingInvoice, setSavingInvoice] = useState(false);
   const [invoiceError, setInvoiceError] = useState<string | null>(null);
+  const [logoFile, setLogoFile] = useState<File | null>(null);
+  const [logoPreviewUrl, setLogoPreviewUrl] = useState<string | null>(null);
+  const [uploadingLogo, setUploadingLogo] = useState(false);
+  const [loadingStoredLogo, setLoadingStoredLogo] = useState(false);
 
   if (!business) {
     return (
@@ -491,10 +496,83 @@ function WorkspaceSettingsSection() {
         sellsIntoNigeria: !!profile.sellsIntoNigeria,
         einvoicingEnabled: !!profile.einvoicingEnabled,
       });
+      addToast({
+        title: "Workspace saved",
+        description: "Your workspace settings were updated.",
+        variant: "success",
+      });
     } catch (e: any) {
-      setError(e?.message || "Failed to save workspace");
+      const msg = e?.message || "Failed to save workspace";
+      setError(msg);
+      addToast({ title: "Couldn’t save workspace", description: msg, variant: "error" });
     } finally {
       setSaving(false);
+    }
+  };
+
+  const handleUploadLogo = async () => {
+    if (!logoFile) return;
+    if (!API_BASE) {
+      addToast({ title: "Upload unavailable", description: "API is not configured.", variant: "error" });
+      return;
+    }
+    const mt = (logoFile.type || "").toLowerCase();
+    if (!["image/png", "image/jpeg", "image/jpg"].includes(mt)) {
+      addToast({ title: "Unsupported logo", description: "Please upload a PNG or JPG image.", variant: "error" });
+      return;
+    }
+    setUploadingLogo(true);
+    try {
+      const base = API_BASE.replace(/\/+$/, "");
+      // 1) Ask API for signed upload URL
+      const initRes = await fetch(`${base}/businesses/${business.id}/invoice-logo/upload-url`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", ...authHeaders() },
+        credentials: "include",
+        body: JSON.stringify({ mimeType: mt }),
+      });
+      if (!initRes.ok) {
+        const text = await initRes.text().catch(() => "");
+        throw new Error(text || "Could not start logo upload.");
+      }
+      const { uploadUrl, key } = (await initRes.json()) as { uploadUrl: string; key: string };
+
+      // 2) PUT to storage (may still be blocked by CORS in some environments; if so, fall back to URL input)
+      const putRes = await fetch(uploadUrl, { method: "PUT", headers: { "Content-Type": mt }, body: logoFile });
+      if (!putRes.ok) throw new Error("Logo upload failed. Please try again.");
+
+      // 3) Persist logo reference on business (store key in invoiceLogoUrl; API can resolve signed view URL)
+      setInvoiceConfig((p) => ({ ...p, invoiceLogoUrl: key }));
+      setLogoFile(null);
+      addToast({ title: "Logo uploaded", description: "Don’t forget to Save invoice settings.", variant: "success" });
+    } catch (e: any) {
+      addToast({ title: "Logo upload failed", description: e?.message || "Please try again.", variant: "error" });
+    } finally {
+      setUploadingLogo(false);
+    }
+  };
+
+  const handleLoadStoredLogoPreview = async () => {
+    if (!API_BASE) return;
+    setLoadingStoredLogo(true);
+    try {
+      const base = API_BASE.replace(/\/+$/, "");
+      const res = await fetch(`${base}/businesses/${business.id}/invoice-logo-url`, {
+        headers: { ...authHeaders() },
+        credentials: "include",
+      });
+      if (!res.ok) throw new Error("Could not load stored logo.");
+      const data = (await res.json()) as { url: string | null };
+      if (!data.url) {
+        addToast({ title: "No stored logo", description: "Upload a logo first, then save invoice settings.", variant: "info" as any });
+        setLogoPreviewUrl(null);
+        return;
+      }
+      setLogoPreviewUrl(data.url);
+    } catch (e: any) {
+      addToast({ title: "Couldn’t preview logo", description: e?.message || "Please try again.", variant: "error" });
+    } finally {
+      setLoadingStoredLogo(false);
     }
   };
 
@@ -719,13 +797,62 @@ function WorkspaceSettingsSection() {
                     placeholder={business.name}
                   />
                 </Field>
-                <Field label="Logo URL (optional)">
-                  <Input
-                    value={invoiceConfig.invoiceLogoUrl}
-                    onChange={(e) => setInvoiceConfig((p) => ({ ...p, invoiceLogoUrl: e.target.value }))}
-                    placeholder="https://…"
-                  />
-                </Field>
+                <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
+                  <p className="text-xs font-semibold text-slate-700">Logo</p>
+                  <p className="mt-1 text-[11px] text-slate-500">
+                    Upload a PNG/JPG logo (recommended) or paste a public image URL.
+                  </p>
+
+                  {logoPreviewUrl && (
+                    <div className="mt-3 rounded-lg border border-slate-200 bg-white p-2">
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img src={logoPreviewUrl} alt="Logo preview" className="h-12 w-auto object-contain" />
+                    </div>
+                  )}
+
+                  <div className="mt-3 flex flex-col gap-2 md:flex-row md:items-center">
+                    <input
+                      type="file"
+                      accept="image/png,image/jpeg"
+                      onChange={(e) => {
+                        const f = e.target.files?.[0] || null;
+                        setLogoFile(f);
+                        if (f) {
+                          const url = URL.createObjectURL(f);
+                          setLogoPreviewUrl(url);
+                        } else {
+                          setLogoPreviewUrl(null);
+                        }
+                      }}
+                    />
+                    <Button
+                      variant="secondary"
+                      className="rounded-full"
+                      onClick={handleUploadLogo}
+                      disabled={!logoFile || uploadingLogo}
+                    >
+                      {uploadingLogo ? "Uploading…" : "Upload logo"}
+                    </Button>
+                    <Button
+                      variant="secondary"
+                      className="rounded-full"
+                      onClick={handleLoadStoredLogoPreview}
+                      disabled={loadingStoredLogo}
+                    >
+                      {loadingStoredLogo ? "Loading…" : "Preview stored logo"}
+                    </Button>
+                  </div>
+
+                  <div className="mt-3">
+                    <Field label="Logo URL (optional)">
+                      <Input
+                        value={invoiceConfig.invoiceLogoUrl}
+                        onChange={(e) => setInvoiceConfig((p) => ({ ...p, invoiceLogoUrl: e.target.value }))}
+                        placeholder="https://… (or storage key after upload)"
+                      />
+                    </Field>
+                  </div>
+                </div>
 
                 <Field label="Address line 1">
                   <Input

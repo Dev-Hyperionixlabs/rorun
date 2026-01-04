@@ -1,15 +1,47 @@
-import { Injectable, NotFoundException, ForbiddenException, Optional, Inject, forwardRef } from '@nestjs/common';
+import { Injectable, NotFoundException, ForbiddenException, Optional, Inject, forwardRef, BadRequestException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateBusinessDto, UpdateBusinessDto } from './dto/business.dto';
+import { StorageService } from '../storage/storage.service';
+import * as crypto from 'crypto';
 
 @Injectable()
 export class BusinessesService {
   constructor(
     private prisma: PrismaService,
+    private storageService: StorageService,
     @Optional()
     @Inject(forwardRef(() => 'ComplianceTasksGenerator'))
     private complianceTasksGenerator?: any,
   ) {}
+
+  async createInvoiceLogoUploadUrl(businessId: string, userId: string, mimeType: string) {
+    await this.findOne(businessId, userId);
+
+    const mt = (mimeType || '').toLowerCase();
+    const allowed = ['image/png', 'image/jpeg', 'image/jpg'];
+    if (!allowed.includes(mt)) {
+      throw new BadRequestException({
+        code: 'LOGO_TYPE_NOT_ALLOWED',
+        message: 'Logo must be PNG or JPG',
+      });
+    }
+
+    const ext = mt.includes('png') ? 'png' : 'jpg';
+    const key = `businesses/${businessId}/invoice-logo/${crypto.randomUUID()}.${ext}`;
+    const uploadUrl = await this.storageService.getSignedUploadUrl(key, mt);
+    return { uploadUrl, key };
+  }
+
+  async getResolvedInvoiceLogoUrl(businessId: string, userId: string): Promise<{ url: string | null }> {
+    const business: any = await this.findOne(businessId, userId);
+    const stored = (business?.invoiceLogoUrl || '').toString().trim();
+    if (!stored) return { url: null };
+    if (stored.startsWith('businesses/')) {
+      const url = await this.storageService.getSignedDownloadUrl(stored, 600);
+      return { url };
+    }
+    return { url: stored };
+  }
 
   async create(userId: string, data: CreateBusinessDto) {
     const business = await this.prisma.business.create({

@@ -36,4 +36,22 @@ export class BusinessesController {
   async update(@Param('id') id: string, @Request() req, @Body() dto: UpdateBusinessDto) {
     return this.businessesService.update(id, req.user.id, dto);
   }
+
+  @Post(':id/invoice-logo/upload-url')
+  @ApiParam({ name: 'id', description: 'Business ID' })
+  @ApiOperation({ summary: 'Get signed upload URL for invoice logo (PNG/JPG)' })
+  async getInvoiceLogoUploadUrl(
+    @Param('id') id: string,
+    @Request() req,
+    @Body() body: { mimeType: string },
+  ) {
+    return this.businessesService.createInvoiceLogoUploadUrl(id, req.user.id, body?.mimeType);
+  }
+
+  @Get(':id/invoice-logo-url')
+  @ApiParam({ name: 'id', description: 'Business ID' })
+  @ApiOperation({ summary: 'Resolve invoice logo URL (signed if stored as storage key)' })
+  async getInvoiceLogoUrl(@Param('id') id: string, @Request() req) {
+    return this.businessesService.getResolvedInvoiceLogoUrl(id, req.user.id);
+  }
 }
