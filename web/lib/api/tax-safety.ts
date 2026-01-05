@@ -14,7 +14,18 @@ export interface TaxSafetyScore {
     receiptCoverageRatio: number | null;
     hasOverdueObligation: boolean;
     daysUntilNextDeadline: number | null;
+    hasFilingPackForYear?: boolean;
   };
+  breakdownPoints?: {
+    taxProfile: { earned: number; max: number };
+    recordsCoverage: { earned: number; max: number };
+    receipts: { earned: number; max: number };
+    deadlines: { earned: number; max: number };
+    overdue: { earned: number; max: number };
+    filingPack: { earned: number; max: number };
+  };
+  deductions?: Array<{ code: string; points: number; reason: string; howToFix: string; href?: string }>;
+  nextActions?: Array<{ title: string; href?: string }>;
 }
 
 export interface FirsReadyStatus {

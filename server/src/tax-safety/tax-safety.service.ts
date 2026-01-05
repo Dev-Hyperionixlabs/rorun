@@ -157,49 +157,88 @@ export class TaxSafetyService {
         metrics.expenseWithDocumentCount / Math.max(1, metrics.expenseTxCount);
     }
 
-    let score = TAX_SAFETY_MAX_SCORE;
+    // Explainable 0..100 scoring model: start at 100 and allocate max points per category.
+    const MAX = TAX_SAFETY_MAX_SCORE;
+    const points = {
+      taxProfile: { max: 10, earned: 0 },
+      recordsCoverage: { max: 30, earned: 0 },
+      receipts: { max: metrics.expenseTxCount >= 5 ? 20 : 0, earned: 0 },
+      deadlines: { max: 10, earned: 0 },
+      overdue: { max: 20, earned: 0 },
+      filingPack: { max: 10, earned: 0 },
+    };
 
-    // 1) Eligibility
-    if (!metrics.hasCurrentTaxProfile) {
-      score -= 20;
-      reasons.push('MISSING_ELIGIBILITY');
+    // 1) Tax profile / eligibility
+    points.taxProfile.earned = metrics.hasCurrentTaxProfile ? points.taxProfile.max : 0;
+    if (!metrics.hasCurrentTaxProfile) reasons.push('MISSING_ELIGIBILITY');
+
+    // 2) Records coverage: reward consistent monthly activity.
+    points.recordsCoverage.earned = Math.round(
+      Math.max(0, Math.min(1, recordsCoverageRatio)) * points.recordsCoverage.max,
+    );
+    if (recordsCoverageRatio < 0.5) reasons.push('LOW_RECORDS_COVERAGE');
+    else if (recordsCoverageRatio < 0.75) reasons.push('MEDIUM_RECORDS_COVERAGE');
+
+    // 3) Receipts: only score when we have enough expenses to evaluate.
+    if (points.receipts.max > 0 && receiptCoverageRatio !== null) {
+      points.receipts.earned = Math.round(
+        Math.max(0, Math.min(1, receiptCoverageRatio)) * points.receipts.max,
+      );
+      if (receiptCoverageRatio < 0.5) reasons.push('LOW_RECEIPT_COVERAGE');
+      else if (receiptCoverageRatio < 0.8) reasons.push('MEDIUM_RECEIPT_COVERAGE');
     }
 
-    // 2) Records coverage
-    if (recordsCoverageRatio < 0.5) {
-      score -= 20;
-      reasons.push('LOW_RECORDS_COVERAGE');
-    } else if (recordsCoverageRatio < 0.75) {
-      score -= 10;
-      reasons.push('MEDIUM_RECORDS_COVERAGE');
-    }
-
-    // 3) Evidence coverage on transactions
-    if (metrics.expenseTxCount >= 5 && receiptCoverageRatio !== null) {
-      if (receiptCoverageRatio < 0.5) {
-        score -= 20;
-        reasons.push('LOW_RECEIPT_COVERAGE');
-      } else if (receiptCoverageRatio < 0.8) {
-        score -= 10;
-        reasons.push('MEDIUM_RECEIPT_COVERAGE');
-      }
-    }
-
-    // 4) Obligations / deadlines
+    // 4) Deadlines: penalize overdue; otherwise small penalty as deadlines approach.
     if (metrics.hasOverdueObligation) {
-      score -= 30;
+      points.overdue.earned = 0;
       reasons.push('OVERDUE_OBLIGATION');
-    } else if (metrics.daysUntilNextDeadline !== null) {
+    } else {
+      points.overdue.earned = points.overdue.max;
+    }
+
+    // Default: if no deadlines configured yet, keep neutral (half credit) rather than punishing.
+    points.deadlines.earned = Math.round(points.deadlines.max / 2);
+    if (metrics.daysUntilNextDeadline !== null) {
       if (metrics.daysUntilNextDeadline <= 7) {
-        score -= 15;
+        points.deadlines.earned = 0;
         reasons.push('DEADLINE_VERY_SOON');
       } else if (metrics.daysUntilNextDeadline <= 30) {
-        score -= 5;
+        points.deadlines.earned = Math.round(points.deadlines.max / 2);
         reasons.push('DEADLINE_SOON');
+      } else {
+        points.deadlines.earned = points.deadlines.max;
       }
     }
 
-    score = Math.min(TAX_SAFETY_MAX_SCORE, Math.max(TAX_SAFETY_MIN_SCORE, score));
+    // 5) Filing pack
+    points.filingPack.earned = metrics.hasFilingPack ? points.filingPack.max : 0;
+    if (!metrics.hasFilingPack) reasons.push('MISSING_FILING_PACK');
+
+    const sumEarned =
+      points.taxProfile.earned +
+      points.recordsCoverage.earned +
+      points.receipts.earned +
+      points.deadlines.earned +
+      points.overdue.earned +
+      points.filingPack.earned;
+
+    // If receipts max is 0 (not enough data), re-normalize by adding the missing max into records coverage.
+    // This keeps MAX at 100 without unfairly penalizing early-stage businesses.
+    const sumMax =
+      points.taxProfile.max +
+      points.recordsCoverage.max +
+      points.receipts.max +
+      points.deadlines.max +
+      points.overdue.max +
+      points.filingPack.max;
+
+    let score = sumEarned;
+    if (sumMax !== MAX) {
+      // Scale to 100
+      score = Math.round((sumEarned / Math.max(1, sumMax)) * MAX);
+    }
+
+    score = Math.min(MAX, Math.max(TAX_SAFETY_MIN_SCORE, score));
 
     let band: 'low' | 'medium' | 'high';
     if (score < 50) band = 'low';
@@ -215,6 +254,80 @@ export class TaxSafetyService {
       hasFilingPackForYear: metrics.hasFilingPack,
     };
 
+    const deductions: Array<{ code: TaxSafetyReasonCode; points: number; reason: string; howToFix: string; href?: string }> =
+      [];
+    const nextActions: Array<{ title: string; href?: string }> = [];
+    const addDeduction = (
+      code: TaxSafetyReasonCode,
+      pointsLost: number,
+      reason: string,
+      howToFix: string,
+      href?: string,
+    ) => {
+      if (pointsLost <= 0) return;
+      deductions.push({ code, points: pointsLost, reason, howToFix, href });
+      nextActions.push({ title: howToFix, href });
+    };
+
+    addDeduction(
+      'MISSING_ELIGIBILITY',
+      points.taxProfile.max - points.taxProfile.earned,
+      'Missing tax status/profile for this year',
+      'Complete your tax profile for this year',
+      '/app/settings?tab=workspace',
+    );
+    addDeduction(
+      'LOW_RECORDS_COVERAGE',
+      Math.max(0, points.recordsCoverage.max - points.recordsCoverage.earned),
+      'Records coverage is low',
+      'Add transactions for missing months',
+      '/app/transactions',
+    );
+    if (points.receipts.max > 0) {
+      addDeduction(
+        'LOW_RECEIPT_COVERAGE',
+        Math.max(0, points.receipts.max - points.receipts.earned),
+        'Receipts coverage is low',
+        'Upload receipts for expense transactions',
+        '/app/documents',
+      );
+    }
+    addDeduction(
+      'OVERDUE_OBLIGATION',
+      points.overdue.max - points.overdue.earned,
+      'You have overdue obligations',
+      'Review and clear overdue obligations',
+      '/app/obligations?filter=overdue',
+    );
+    addDeduction(
+      metrics.daysUntilNextDeadline !== null && metrics.daysUntilNextDeadline <= 7
+        ? 'DEADLINE_VERY_SOON'
+        : metrics.daysUntilNextDeadline !== null && metrics.daysUntilNextDeadline <= 30
+          ? 'DEADLINE_SOON'
+          : 'DEADLINE_SOON',
+      points.deadlines.max - points.deadlines.earned,
+      'Deadlines are approaching',
+      'Review upcoming deadlines',
+      '/app/obligations',
+    );
+    addDeduction(
+      'MISSING_FILING_PACK',
+      points.filingPack.max - points.filingPack.earned,
+      'No filing pack generated for this year',
+      'Generate your year-end filing pack',
+      '/app/summary',
+    );
+
+    // Sort actions by points impact (descending) and de-duplicate by title.
+    deductions.sort((a, b) => b.points - a.points);
+    const seen = new Set<string>();
+    const orderedActions: Array<{ title: string; href?: string }> = [];
+    for (const d of deductions) {
+      if (seen.has(d.howToFix)) continue;
+      seen.add(d.howToFix);
+      orderedActions.push({ title: d.howToFix, href: d.href });
+    }
+
     return {
       businessId,
       taxYear,
@@ -222,6 +335,9 @@ export class TaxSafetyService {
       band,
       reasons,
       breakdown,
+      breakdownPoints: points,
+      deductions,
+      nextActions: orderedActions,
     };
   }
 

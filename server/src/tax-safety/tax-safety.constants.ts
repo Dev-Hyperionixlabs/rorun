@@ -11,7 +11,8 @@ export type TaxSafetyReasonCode =
   | 'MEDIUM_RECEIPT_COVERAGE'
   | 'OVERDUE_OBLIGATION'
   | 'DEADLINE_VERY_SOON'
-  | 'DEADLINE_SOON';
+  | 'DEADLINE_SOON'
+  | 'MISSING_FILING_PACK';
 
 export type TaxSafetyBand = 'low' | 'medium' | 'high';
 
@@ -31,4 +32,14 @@ export interface TaxSafetyScore {
   band: TaxSafetyBand;
   reasons: TaxSafetyReasonCode[];
   breakdown: TaxSafetyScoreBreakdown;
+  breakdownPoints?: {
+    taxProfile: { earned: number; max: number };
+    recordsCoverage: { earned: number; max: number };
+    receipts: { earned: number; max: number };
+    deadlines: { earned: number; max: number };
+    overdue: { earned: number; max: number };
+    filingPack: { earned: number; max: number };
+  };
+  deductions?: Array<{ code: TaxSafetyReasonCode; points: number; reason: string; howToFix: string; href?: string }>;
+  nextActions?: Array<{ title: string; href?: string }>;
 }

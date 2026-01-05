@@ -7,6 +7,8 @@ import { Card, CardContent, CardHeader, CardTitle } from "./ui/card";
 import { Button } from "./ui/button";
 import { useFirsReady } from "@/hooks/use-firs-ready";
 import { useToast } from "./ui/toast";
+import { getTaxSafetyScore } from "@/lib/api/tax-safety";
+import { useState } from "react";
 
 export function TaxSafetyCard() {
   const { businesses, transactions, currentBusinessId } = useMockApi();
@@ -17,6 +19,7 @@ export function TaxSafetyCard() {
   const year = new Date().getFullYear();
 
   const { status, error } = useFirsReady(business, transactions, year);
+  const [details, setDetails] = useState<any | null>(null);
   const prevScore = useRef<number | null>(null);
   const { addToast } = useToast();
 
@@ -39,6 +42,23 @@ export function TaxSafetyCard() {
     }
     if (status) prevScore.current = status.score;
   }, [status, addToast]);
+
+  useEffect(() => {
+    let cancelled = false;
+    async function load() {
+      if (!business) return;
+      try {
+        const score = await getTaxSafetyScore(business.id, year);
+        if (!cancelled) setDetails(score);
+      } catch {
+        // ignore; hero still works without breakdown
+      }
+    }
+    load();
+    return () => {
+      cancelled = true;
+    };
+  }, [business?.id, year]);
 
   if (!status) {
     return (
@@ -86,6 +106,11 @@ export function TaxSafetyCard() {
       <CardContent className="flex items-center justify-between gap-4 text-xs">
         <div className="space-y-1 text-slate-600 text-xs">
           <p>{status.message}</p>
+          {details?.nextActions?.[0]?.title ? (
+            <p className="text-[11px] text-slate-500">
+              Next: <span className="font-medium text-slate-700">{details.nextActions[0].title}</span>
+            </p>
+          ) : null}
         </div>
         <Link href="/app/tax-safety">
           <Button size="sm" variant="secondary">

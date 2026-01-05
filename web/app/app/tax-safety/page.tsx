@@ -49,6 +49,11 @@ const reasonCopy: Record<string, { title: string; body: string; action: string }
     title: "A filing deadline is coming up",
     body: "Starting early keeps you calm and gives you time to ask questions if something looks off.",
     action: "Plan ahead for this filing"
+  },
+  MISSING_FILING_PACK: {
+    title: "You haven’t generated your filing pack yet",
+    body: "A year-end pack (PDF + CSV) makes it easy to share clean totals with your accountant or respond quickly if FIRS asks questions.",
+    action: "Generate filing pack"
   }
 };
 
@@ -134,6 +139,10 @@ export default function TaxSafetyDetailPage() {
       router.push("/app/obligations?filter=overdue");
       return;
     }
+    if (reason === "MISSING_FILING_PACK") {
+      router.push("/app/summary");
+      return;
+    }
     router.push("/app/dashboard");
   };
 
@@ -216,6 +225,69 @@ export default function TaxSafetyDetailPage() {
           </div>
         </CardContent>
       </Card>
+
+      {score.breakdownPoints && (
+        <details className="rounded-lg border border-slate-200 bg-white p-4">
+          <summary className="cursor-pointer text-sm font-semibold text-slate-900">
+            How your score is calculated
+          </summary>
+          <div className="mt-3 space-y-2 text-xs">
+            {([
+              ["Tax profile", score.breakdownPoints.taxProfile],
+              ["Records coverage", score.breakdownPoints.recordsCoverage],
+              ["Receipts", score.breakdownPoints.receipts],
+              ["Deadlines", score.breakdownPoints.deadlines],
+              ["Overdue", score.breakdownPoints.overdue],
+              ["Filing pack", score.breakdownPoints.filingPack],
+            ] as Array<[string, { earned: number; max: number }]>).map(([label, p]) => (
+              <div key={label} className="flex items-center justify-between rounded-md bg-slate-50 px-3 py-2">
+                <span className="font-semibold text-slate-700">{label}</span>
+                <span className="text-slate-600">
+                  {Math.round(p.earned)}/{Math.round(p.max)}
+                </span>
+              </div>
+            ))}
+          </div>
+
+          {score.deductions && score.deductions.length > 0 && (
+            <div className="mt-4">
+              <p className="text-xs font-semibold text-slate-800">Deductions</p>
+              <div className="mt-2 space-y-2 text-xs">
+                {score.deductions.slice(0, 6).map((d, idx) => (
+                  <div key={`${d.code}-${idx}`} className="rounded-md border border-slate-200 bg-white px-3 py-2">
+                    <div className="flex items-center justify-between gap-2">
+                      <p className="font-semibold text-slate-800">{d.reason}</p>
+                      <span className="text-slate-600">-{d.points}</span>
+                    </div>
+                    <p className="mt-1 text-slate-600">{d.howToFix}</p>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {score.nextActions && score.nextActions.length > 0 && (
+            <div className="mt-4">
+              <p className="text-xs font-semibold text-slate-800">Do this next</p>
+              <div className="mt-2 space-y-2 text-xs">
+                {score.nextActions.slice(0, 5).map((a, idx) => (
+                  <div
+                    key={`${a.title}-${idx}`}
+                    className="flex items-center justify-between rounded-md bg-slate-50 px-3 py-2"
+                  >
+                    <span className="text-slate-700">{a.title}</span>
+                    {a.href ? (
+                      <Button size="sm" variant="secondary" onClick={() => router.push(a.href!)}>
+                        Open
+                      </Button>
+                    ) : null}
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </details>
+      )}
 
       <Card>
         <CardHeader>
