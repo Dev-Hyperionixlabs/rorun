@@ -513,9 +513,103 @@ export default function TaxConfigPage() {
                     </Button>
                   </div>
                   {testResult && (
-                    <pre className="overflow-auto rounded-md border border-slate-200 bg-slate-50 p-3 text-xs">
-                      {JSON.stringify(testResult, null, 2)}
-                    </pre>
+                    <div className="space-y-3">
+                      <div className="rounded-md border border-slate-200 bg-slate-50 p-3">
+                        <p className="text-xs font-semibold text-slate-800">Summary</p>
+                        <div className="mt-2 grid gap-2 md:grid-cols-3 text-xs">
+                          <div className="rounded-md bg-white border border-slate-200 p-2">
+                            <p className="font-semibold text-slate-700">Matched rules</p>
+                            <p className="mt-1 text-slate-600">
+                              {(testResult?.matchedRules || []).length}
+                            </p>
+                          </div>
+                          <div className="rounded-md bg-white border border-slate-200 p-2">
+                            <p className="font-semibold text-slate-700">Applied templates</p>
+                            <p className="mt-1 text-slate-600">
+                              {(testResult?.debug?.appliedDeadlineTemplates || []).length}
+                            </p>
+                          </div>
+                          <div className="rounded-md bg-white border border-slate-200 p-2">
+                            <p className="font-semibold text-slate-700">Deadlines</p>
+                            <p className="mt-1 text-slate-600">
+                              {(testResult?.outputs?.deadlines || []).length}
+                            </p>
+                          </div>
+                        </div>
+                      </div>
+
+                      <details className="rounded-md border border-slate-200 bg-white p-3">
+                        <summary className="cursor-pointer text-xs font-semibold text-slate-800">
+                          Debug details (prove what applied)
+                        </summary>
+                        <div className="mt-3 space-y-3 text-xs">
+                          <div>
+                            <p className="font-semibold text-slate-800">Applied rules</p>
+                            {((testResult?.debug?.appliedRulesDetail || []) as any[]).length ? (
+                              <div className="mt-2 space-y-2">
+                                {(testResult.debug.appliedRulesDetail as any[]).map((r, idx) => (
+                                  <div key={`${r.key}-${idx}`} className="rounded-md border border-slate-200 bg-slate-50 p-2">
+                                    <p className="font-semibold text-slate-800">{r.key}</p>
+                                    <p className="text-slate-600">
+                                      priority: {r.priority} • outcome keys: {(r.outcomeKeys || []).join(", ") || "—"}
+                                    </p>
+                                  </div>
+                                ))}
+                              </div>
+                            ) : (
+                              <p className="mt-1 text-slate-600">No rules matched.</p>
+                            )}
+                          </div>
+
+                          <div>
+                            <p className="font-semibold text-slate-800">Applied deadline templates</p>
+                            {((testResult?.debug?.appliedDeadlineTemplates || []) as any[]).length ? (
+                              <p className="mt-1 text-slate-700">
+                                {(testResult.debug.appliedDeadlineTemplates as any[]).join(", ")}
+                              </p>
+                            ) : (
+                              <p className="mt-1 text-slate-600">No templates applied.</p>
+                            )}
+                          </div>
+
+                          <div>
+                            <p className="font-semibold text-slate-800">Deadlines</p>
+                            {((testResult?.outputs?.deadlines || []) as any[]).length ? (
+                              <div className="mt-2 space-y-2">
+                                {(testResult.outputs.deadlines as any[]).slice(0, 24).map((d, idx) => (
+                                  <div key={`${d.key}-${idx}`} className="rounded-md border border-slate-200 bg-slate-50 p-2">
+                                    <p className="font-semibold text-slate-800">{d.key}</p>
+                                    <p className="text-slate-600">
+                                      template: {d.templateKey || "—"} • due:{" "}
+                                      {d.computedDueDateForYear
+                                        ? String(d.computedDueDateForYear).slice(0, 10)
+                                        : d.dueDate
+                                          ? String(d.dueDate).slice(0, 10)
+                                          : "—"}
+                                    </p>
+                                    {d.title ? <p className="mt-1 text-slate-700">{d.title}</p> : null}
+                                  </div>
+                                ))}
+                                {(testResult.outputs.deadlines as any[]).length > 24 ? (
+                                  <p className="text-slate-500">Showing first 24 deadlines…</p>
+                                ) : null}
+                              </div>
+                            ) : (
+                              <p className="mt-1 text-slate-600">No deadlines generated.</p>
+                            )}
+                          </div>
+                        </div>
+                      </details>
+
+                      <details className="rounded-md border border-slate-200 bg-white p-3">
+                        <summary className="cursor-pointer text-xs font-semibold text-slate-800">
+                          Raw preview JSON
+                        </summary>
+                        <pre className="mt-3 overflow-auto rounded-md border border-slate-200 bg-slate-50 p-3 text-xs">
+                          {JSON.stringify(testResult, null, 2)}
+                        </pre>
+                      </details>
+                    </div>
                   )}
                 </CardContent>
               </Card>

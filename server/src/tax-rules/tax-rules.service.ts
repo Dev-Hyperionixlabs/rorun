@@ -439,7 +439,43 @@ export class TaxRulesService {
 
     evaluation.outputs.deadlines = deadlines;
 
-    return evaluation;
+    const appliedRules = evaluation.matchedRules.map((r) => r.key);
+    const appliedRuleSet = new Set(appliedRules);
+    const appliedRulesDetail = ruleSet.rules
+      .filter((r) => appliedRuleSet.has(r.key))
+      .map((r) => ({
+        key: r.key,
+        priority: r.priority,
+        type: (r as any).type,
+        outcomeKeys: r.outcomeJson && typeof r.outcomeJson === 'object' ? Object.keys(r.outcomeJson) : [],
+        explanation: r.explanation,
+      }));
+
+    const appliedDeadlineTemplates = Array.from(
+      new Set((deadlines || []).map((d: any) => d?.templateKey || (d?.key || '').split(':')[0]).filter(Boolean)),
+    );
+
+    return {
+      outputs: evaluation.outputs,
+      explanations: evaluation.explanations,
+      matchedRules: evaluation.matchedRules,
+      debug: {
+        taxYear: year,
+        appliedRules,
+        appliedRulesDetail,
+        appliedDeadlineTemplates,
+        deadlines: (deadlines || []).map((d: any) => ({
+          key: d.key,
+          templateKey: d.templateKey,
+          title: d.title,
+          frequency: d.frequency,
+          dueDate: d.dueDate,
+          computedDueDateForYear: d.computedDueDateForYear,
+          periodStart: d.periodStart,
+          periodEnd: d.periodEnd,
+        })),
+      },
+    };
   }
 
   private validateCondition(condition: any): void {
