@@ -69,9 +69,12 @@ function DocumentsPageInner() {
         description: `${file.name} has been added successfully.`,
       });
     } catch (err: any) {
+      const requestId = err?.data?.requestId || err?.data?.requestID || err?.data?.request_id;
       addToast({
         title: "Upload failed",
-        description: err?.message || "Unable to upload document",
+        description:
+          (err?.message || "Unable to upload document") +
+          (requestId ? ` (requestId: ${requestId})` : ""),
       });
     }
 
