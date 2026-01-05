@@ -193,8 +193,8 @@ export function ImportWizard({ businessId, onClose, onSuccess, redirectToReview 
         createDto.sourceType = "csv";
       } else {
         // PDF: upload as Document then create an import batch referencing it.
-        const { uploadDocument } = await import("@/lib/api/documents");
-        const doc = await uploadDocument(businessId, pdfFile!);
+        const { uploadDocumentServerFirst } = await import("@/lib/api/documents");
+        const doc = await uploadDocumentServerFirst(businessId, pdfFile!);
         createDto.documentId = doc.id;
         createDto.sourceType = "pdf";
       }
@@ -241,9 +241,12 @@ export function ImportWizard({ businessId, onClose, onSuccess, redirectToReview 
       setSelectedLines(chosen.size ? chosen : new Set(linesArr.map((l) => l.id)));
       setStep(2);
     } catch (e: any) {
+      const requestId = e?.data?.requestId || e?.data?.requestID || e?.data?.request_id;
       addToast({
         title: "Import failed",
-        description: e?.message || "Failed to create import",
+        description:
+          (e?.message || "Failed to create import") +
+          (requestId ? ` (requestId: ${requestId})` : ""),
         variant: "error",
       });
     } finally {

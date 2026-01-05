@@ -132,6 +132,50 @@ export async function uploadDocument(
   };
 }
 
+/**
+ * Upload via server-side multipart first (avoids browser->R2/S3 CORS preflight failures).
+ * Intended for bank statements (PDF/CSV) where direct PUT often fails in prod.
+ */
+export async function uploadDocumentServerFirst(
+  businessId: string,
+  file: File,
+  relatedTransactionId?: string,
+): Promise<Document> {
+  const mimeType = file.type || (file.name.toLowerCase().endsWith(".pdf") ? "application/pdf" : "");
+  if (!mimeType) throw new Error("Could not determine file type.");
+  if (!API_BASE) throw new Error("API is not configured.");
+
+  const form = new FormData();
+  form.append("file", file);
+  if (relatedTransactionId) form.append("relatedTransactionId", relatedTransactionId);
+  const docType =
+    mimeType === "application/pdf" && /statement|bank/i.test(file.name) ? "bank_statement" : "receipt";
+  form.append("type", docType);
+
+  const res = await fetch(`${API_BASE.replace(/\/+$/, "")}/businesses/${businessId}/documents/upload`, {
+    method: "POST",
+    headers: { ...authHeaders() },
+    body: form,
+    credentials: "include",
+  });
+  if (!res.ok) {
+    const text = await res.text().catch(() => "");
+    throw new Error(text || "Upload failed. Please try again.");
+  }
+  const doc = await res.json();
+  return {
+    ...doc,
+    url: doc.url || doc.fileUrl || doc.viewUrl || doc.storageUrl,
+    fileUrl: doc.fileUrl || doc.url || doc.viewUrl || doc.storageUrl,
+    fileName: doc.fileName || doc.name || doc.originalName,
+    type: doc.type || doc.fileType || doc.documentType,
+    fileType: doc.fileType || doc.type,
+    uploadedAt: doc.uploadedAt || doc.createdAt,
+    createdAt: doc.createdAt || doc.uploadedAt,
+    ocrStatus: doc.ocrStatus || doc.status,
+  };
+}
+
 export async function updateDocument(
   businessId: string,
   docId: string,

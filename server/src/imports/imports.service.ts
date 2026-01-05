@@ -4,9 +4,21 @@ import { BusinessesService } from '../businesses/businesses.service';
 import { TransactionsService } from '../transactions/transactions.service';
 import { AuditService } from '../audit/audit.service';
 import { AiService } from '../ai/ai.service';
+import { StorageService } from '../storage/storage.service';
 import { CreateImportDto, ApproveImportDto } from './dto/import.dto';
 import { parseCsv, parsePaste } from './import-parser';
 import * as crypto from 'crypto';
+
+// pdf-parse is optional at runtime (used as a best-effort fallback). We load it lazily.
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const getPdfParse = (): any => {
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    return require('pdf-parse');
+  } catch {
+    return null;
+  }
+};
 
 @Injectable()
 export class ImportsService {
@@ -16,16 +28,46 @@ export class ImportsService {
     private transactionsService: TransactionsService,
     private auditService: AuditService,
     private aiService: AiService,
+    private storageService: StorageService,
   ) {}
 
   async createImport(businessId: string, userId: string, dto: CreateImportDto) {
     await this.businessesService.findOne(businessId, userId);
+
+    // Validate inputs early so we don't produce Prisma 500s.
+    if (dto.sourceType === 'paste' && !dto.rawText?.trim()) {
+      throw new BadRequestException({ code: 'IMPORT_RAW_TEXT_REQUIRED', message: 'rawText is required for paste imports' });
+    }
+    if (dto.sourceType === 'csv' && !dto.rawText?.trim() && !dto.documentId) {
+      throw new BadRequestException({
+        code: 'IMPORT_CSV_REQUIRED',
+        message: 'For CSV imports, provide rawText CSV content (recommended) or a documentId.',
+      });
+    }
+    if (dto.sourceType === 'pdf' && !dto.documentId) {
+      throw new BadRequestException({
+        code: 'IMPORT_PDF_DOCUMENT_REQUIRED',
+        message: 'documentId is required for PDF imports.',
+      });
+    }
+
+    // If a documentId is provided, ensure it exists and belongs to this business to avoid FK 500s.
+    if (dto.documentId) {
+      const doc = await this.prisma.document.findFirst({
+        where: { id: dto.documentId, businessId },
+        select: { id: true },
+      });
+      if (!doc) {
+        throw new NotFoundException('Document not found for this business');
+      }
+    }
 
     const batch = await this.prisma.importBatch.create({
       data: {
         businessId,
         documentId: dto.documentId || null,
         source: 'statement',
+        // We can parse paste/csv immediately; pdf is async.
         status: dto.sourceType === 'pdf' ? 'processing' : 'pending',
       },
     });
@@ -42,13 +84,21 @@ export class ImportsService {
     // Parse based on source type
     if (dto.sourceType === 'paste' && dto.rawText) {
       await this.parsePasteText(batch.id, dto.rawText, businessId);
-    } else if (dto.sourceType === 'csv' && dto.documentId) {
-      // CSV parsing would read from document storage
-      // For now, mark as processing - actual parsing would happen in a job
-      await this.prisma.importBatch.update({
-        where: { id: batch.id },
-        data: { status: 'processing' },
-      });
+    } else if (dto.sourceType === 'csv') {
+      // CSV can be provided as rawText (normalized by the client) OR as an uploaded Document.
+      if (dto.rawText) {
+        await this.parseCsvText(batch.id, dto.rawText, businessId);
+      } else if (dto.documentId) {
+        // Parse from document storage
+        const doc = await this.prisma.document.findFirst({
+          where: { id: dto.documentId, businessId },
+          select: { storageUrl: true, mimeType: true },
+        });
+        if (!doc) throw new NotFoundException('Document not found');
+        const { buffer } = await this.storageService.getObjectBuffer(doc.storageUrl);
+        const text = buffer.toString('utf-8');
+        await this.parseCsvText(batch.id, text, businessId);
+      }
     } else if (dto.sourceType === 'pdf' && dto.documentId) {
       // Best-effort: PDF parsing is async via AiService (OCR/extraction).
       // Client will call /parse and poll /:id until lines exist or status=failed.
@@ -101,11 +151,33 @@ export class ImportsService {
         [];
 
       if (!candidates.length) {
+        // Fallback: try direct text extraction from the PDF bytes (no external OCR service).
+        // This is best-effort and works for many bank statement PDFs that contain selectable text.
+        try {
+          const { buffer: pdfBuf } = await this.storageService.getObjectBuffer(batch.document.storageUrl);
+          const pdfParse = getPdfParse();
+          const parsed = pdfParse ? await pdfParse(pdfBuf).catch(() => null) : null;
+          const text = (parsed as any)?.text ? String((parsed as any).text) : '';
+          const extractedLines = text ? parsePaste(text) : [];
+          if (extractedLines.length > 0) {
+            await this.createBatchLines(batchId, extractedLines, businessId);
+            await this.prisma.importBatch.update({ where: { id: batchId }, data: { status: 'parsed' } }).catch(() => {});
+            return this.prisma.importBatch.findUnique({
+              where: { id: batchId },
+              include: { lines: true, document: true },
+            });
+          }
+        } catch {
+          // ignore
+        }
+
         // Still processing or unsupported PDF format
-        await this.prisma.importBatch.update({
-          where: { id: batchId },
-          data: { status: (doc as any)?.ocrStatus === 'failed' ? 'failed' : 'processing' },
-        }).catch(() => {});
+        await this.prisma.importBatch
+          .update({
+            where: { id: batchId },
+            data: { status: (doc as any)?.ocrStatus === 'failed' ? 'failed' : 'processing' },
+          })
+          .catch(() => {});
         return batch;
       }
 
@@ -142,17 +214,11 @@ export class ImportsService {
         return batch;
       }
 
-      // Replace any existing lines (should be none here)
-      await this.prisma.importBatchLine.deleteMany({ where: { importBatchId: batchId } }).catch(() => {});
-      await this.prisma.importBatchLine.createMany({
-        data: rows.slice(0, 1000).map((r) => ({
-          importBatchId: batchId,
-          date: r.date,
-          description: r.description,
-          amount: r.amount,
-          direction: r.direction,
-        })),
-      });
+      await this.createBatchLines(
+        batchId,
+        rows.map((r) => ({ ...r, confidence: 0.75, direction: r.direction as 'credit' | 'debit' })),
+        businessId,
+      );
       await this.prisma.importBatch.update({ where: { id: batchId }, data: { status: 'parsed' } }).catch(() => {});
 
       return this.prisma.importBatch.findUnique({
@@ -368,37 +434,41 @@ export class ImportsService {
     businessId: string,
   ) {
     const parsedLines = parsePaste(rawText);
+    await this.createBatchLines(batchId, parsedLines, businessId);
+    await this.prisma.importBatch.update({ where: { id: batchId }, data: { status: 'parsed' } }).catch(() => {});
+    return true;
+  }
 
-    // Get categories for suggestions
-    const categories = await this.prisma.transactionCategory.findMany({
-      // Transaction categories are global in this schema
+  private async parseCsvText(batchId: string, csvText: string, businessId: string) {
+    const parsedLines = parseCsv(csvText);
+    if (!parsedLines.length) {
+      await this.prisma.importBatch.update({ where: { id: batchId }, data: { status: 'failed' } }).catch(() => {});
+      return false;
+    }
+    await this.createBatchLines(batchId, parsedLines, businessId);
+    await this.prisma.importBatch.update({ where: { id: batchId }, data: { status: 'parsed' } }).catch(() => {});
+    return true;
+  }
+
+  private async createBatchLines(
+    batchId: string,
+    parsedLines: Array<{ date: Date; description: string; amount: number; direction: 'credit' | 'debit'; confidence: number }>,
+    businessId: string,
+  ) {
+    // Get categories for suggestions (global list)
+    const categories = await this.prisma.transactionCategory.findMany({});
+    await this.prisma.importBatchLine.deleteMany({ where: { importBatchId: batchId } }).catch(() => {});
+    await this.prisma.importBatchLine.createMany({
+      data: parsedLines.slice(0, 2000).map((line) => ({
+        importBatchId: batchId,
+        date: line.date,
+        description: line.description,
+        amount: line.amount,
+        direction: line.direction,
+        suggestedCategoryId: this.suggestCategory(line.description, categories),
+        aiConfidence: line.confidence,
+      })),
     });
-
-    const lines = await Promise.all(
-      parsedLines.map((line, idx) =>
-        this.prisma.importBatchLine.create({
-          data: {
-            importBatchId: batchId,
-            date: line.date,
-            description: line.description,
-            amount: line.amount,
-            direction: line.direction,
-            suggestedCategoryId: this.suggestCategory(
-              line.description,
-              categories,
-            ),
-            aiConfidence: line.confidence,
-          },
-        }),
-      ),
-    );
-
-    await this.prisma.importBatch.update({
-      where: { id: batchId },
-      data: { status: 'processing' },
-    });
-
-    return lines;
   }
 
   private suggestCategory(
