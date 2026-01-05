@@ -12,13 +12,15 @@ import { Select } from "@/components/ui/select";
 import { BrandLink } from "@/components/BrandLink";
 import { createBusiness } from "@/lib/api/businesses";
 import { useToast } from "@/components/ui/toast";
+import { Switch } from "@/components/ui/switch";
 
 const steps = [
   "Basics",
   "Business type",
   "Sector",
   "Registration",
-  "Turnover"
+  "Turnover",
+  "Tax details"
 ] as const;
 
 type OnboardingFormState = {
@@ -31,6 +33,16 @@ type OnboardingFormState = {
   hasTIN: boolean;
   vatRegistered: boolean;
   turnoverBand: any;
+  annualTurnoverNGN: string;
+  fixedAssetsNGN: string;
+  employeeCount: string;
+  accountingYearEndMonth: string;
+  accountingYearEndDay: string;
+  isProfessionalServices: boolean;
+  claimsTaxIncentives: boolean;
+  isNonResident: boolean;
+  sellsIntoNigeria: boolean;
+  einvoicingEnabled: boolean;
 };
 
 export default function OnboardingPage() {
@@ -63,6 +75,16 @@ export default function OnboardingPage() {
     hasTIN: isSeedBusiness ? false : (business as any)?.hasTIN ?? false,
     vatRegistered: isSeedBusiness ? false : business?.vatRegistered ?? false,
     turnoverBand: (isSeedBusiness ? "" : (business as any)?.turnoverBand) as any,
+    annualTurnoverNGN: String((business as any)?.annualTurnoverNGN ?? ""),
+    fixedAssetsNGN: String((business as any)?.fixedAssetsNGN ?? ""),
+    employeeCount: String((business as any)?.employeeCount ?? ""),
+    accountingYearEndMonth: String((business as any)?.accountingYearEndMonth ?? ""),
+    accountingYearEndDay: String((business as any)?.accountingYearEndDay ?? ""),
+    isProfessionalServices: !!(business as any)?.isProfessionalServices,
+    claimsTaxIncentives: !!(business as any)?.claimsTaxIncentives,
+    isNonResident: !!(business as any)?.isNonResident,
+    sellsIntoNigeria: !!(business as any)?.sellsIntoNigeria,
+    einvoicingEnabled: !!(business as any)?.einvoicingEnabled,
   };
 
   const [form, setForm] = useState<OnboardingFormState>(() => {
@@ -97,7 +119,8 @@ export default function OnboardingPage() {
     (step === 1 && !!form.legalForm) ||
     (step === 2 && !!form.sector && !!form.state) ||
     (step === 3 && true) ||
-    (step === 4 && !!form.turnoverBand);
+    (step === 4 && !!form.turnoverBand) ||
+    (step === 5 && true);
 
   const goNext = () => {
     if (step < steps.length - 1) setStep((s) => s + 1);
@@ -125,6 +148,16 @@ export default function OnboardingPage() {
           state: form.state || undefined,
           vatRegistered: !!form.vatRegistered,
           estimatedTurnoverBand: form.turnoverBand ? String(form.turnoverBand) : undefined,
+          annualTurnoverNGN: form.annualTurnoverNGN.trim() ? Number(form.annualTurnoverNGN) : null,
+          fixedAssetsNGN: form.fixedAssetsNGN.trim() ? Number(form.fixedAssetsNGN) : null,
+          employeeCount: form.employeeCount.trim() ? Number(form.employeeCount) : null,
+          accountingYearEndMonth: form.accountingYearEndMonth.trim() ? Number(form.accountingYearEndMonth) : null,
+          accountingYearEndDay: form.accountingYearEndDay.trim() ? Number(form.accountingYearEndDay) : null,
+          isProfessionalServices: !!form.isProfessionalServices,
+          claimsTaxIncentives: !!form.claimsTaxIncentives,
+          isNonResident: !!form.isNonResident,
+          sellsIntoNigeria: !!form.sellsIntoNigeria,
+          einvoicingEnabled: !!form.einvoicingEnabled,
         });
         businessId = created.id;
       } else {
@@ -135,6 +168,16 @@ export default function OnboardingPage() {
           state: form.state || undefined,
           vatRegistered: !!form.vatRegistered,
           estimatedTurnoverBand: form.turnoverBand ? String(form.turnoverBand) : undefined,
+          annualTurnoverNGN: form.annualTurnoverNGN.trim() ? Number(form.annualTurnoverNGN) : null,
+          fixedAssetsNGN: form.fixedAssetsNGN.trim() ? Number(form.fixedAssetsNGN) : null,
+          employeeCount: form.employeeCount.trim() ? Number(form.employeeCount) : null,
+          accountingYearEndMonth: form.accountingYearEndMonth.trim() ? Number(form.accountingYearEndMonth) : null,
+          accountingYearEndDay: form.accountingYearEndDay.trim() ? Number(form.accountingYearEndDay) : null,
+          isProfessionalServices: !!form.isProfessionalServices,
+          claimsTaxIncentives: !!form.claimsTaxIncentives,
+          isNonResident: !!form.isNonResident,
+          sellsIntoNigeria: !!form.sellsIntoNigeria,
+          einvoicingEnabled: !!form.einvoicingEnabled,
         } as any);
       }
 
@@ -451,6 +494,79 @@ export default function OnboardingPage() {
                       {band.hint}
                     </p>
                   </button>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {step === 5 && (
+            <div className="space-y-4 text-sm">
+              <p className="text-slate-600">
+                Optional: add more details to make your tax rules and deadlines more accurate. You can edit these later in Settings.
+              </p>
+
+              <div className="grid gap-3 md:grid-cols-2">
+                <div className="space-y-1">
+                  <label className="text-sm font-medium text-slate-800">Annual turnover (₦)</label>
+                  <Input
+                    inputMode="numeric"
+                    value={form.annualTurnoverNGN}
+                    onChange={(e) => setForm((f) => ({ ...f, annualTurnoverNGN: e.target.value }))}
+                    placeholder="e.g. 25000000"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-sm font-medium text-slate-800">Fixed assets (₦)</label>
+                  <Input
+                    inputMode="numeric"
+                    value={form.fixedAssetsNGN}
+                    onChange={(e) => setForm((f) => ({ ...f, fixedAssetsNGN: e.target.value }))}
+                    placeholder="e.g. 5000000"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-sm font-medium text-slate-800">Employee count</label>
+                  <Input
+                    inputMode="numeric"
+                    value={form.employeeCount}
+                    onChange={(e) => setForm((f) => ({ ...f, employeeCount: e.target.value }))}
+                    placeholder="e.g. 3"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-sm font-medium text-slate-800">Accounting year end</label>
+                  <div className="grid grid-cols-2 gap-2">
+                    <Input
+                      inputMode="numeric"
+                      value={form.accountingYearEndMonth}
+                      onChange={(e) => setForm((f) => ({ ...f, accountingYearEndMonth: e.target.value }))}
+                      placeholder="Month (1–12)"
+                    />
+                    <Input
+                      inputMode="numeric"
+                      value={form.accountingYearEndDay}
+                      onChange={(e) => setForm((f) => ({ ...f, accountingYearEndDay: e.target.value }))}
+                      placeholder="Day (1–31)"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                {[
+                  { key: "isProfessionalServices", label: "Professional services business" },
+                  { key: "claimsTaxIncentives", label: "Claims tax incentives" },
+                  { key: "isNonResident", label: "Non-resident business" },
+                  { key: "sellsIntoNigeria", label: "Sells into Nigeria" },
+                  { key: "einvoicingEnabled", label: "E-invoicing enabled" },
+                ].map((row) => (
+                  <div key={row.key} className="flex items-center justify-between rounded-lg border border-slate-200 bg-white px-3 py-2">
+                    <div className="text-sm font-medium text-slate-800">{row.label}</div>
+                    <Switch
+                      checked={Boolean((form as any)[row.key])}
+                      onCheckedChange={(v) => setForm((f) => ({ ...f, [row.key]: Boolean(v) } as any))}
+                    />
+                  </div>
                 ))}
               </div>
             </div>
