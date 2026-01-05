@@ -27,10 +27,11 @@ import { useFeatures } from "@/hooks/use-features";
 import { Lock } from "lucide-react";
 import { API_BASE, authHeaders } from "@/lib/api/client";
 
+const DEFAULT_TAB = "workspace";
 const tabs = [
+  { id: "workspace", label: "Workspace" },
   { id: "plan", label: "Plan" },
   { id: "profile", label: "Profile" },
-  { id: "workspace", label: "Workspace" },
   { id: "notifications", label: "Notifications" },
 ];
 
@@ -45,14 +46,22 @@ export default function SettingsPage() {
 function SettingsContent() {
   const search = useSearchParams();
   const router = useRouter();
-  const searchTab = search.get("tab") || "plan";
-  const normalizedTab = tabs.some((t) => t.id === searchTab) ? searchTab : "plan";
+  const searchTab = search.get("tab") || DEFAULT_TAB;
+  const normalizedTab = tabs.some((t) => t.id === searchTab) ? searchTab : DEFAULT_TAB;
   const [tab, setTab] = useState(normalizedTab);
 
   // Keep UI state in sync with URL (e.g. when navigating via profile menu or back/forward).
   useEffect(() => {
     setTab(normalizedTab);
   }, [normalizedTab]);
+
+  // If user hits /app/settings with no tab param, normalize URL to default tab.
+  useEffect(() => {
+    if (!search.get("tab")) {
+      router.replace(`/app/settings?tab=${DEFAULT_TAB}`);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const handleTab = (id: string) => {
     setTab(id);
