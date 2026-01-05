@@ -178,8 +178,14 @@ export class TaxRulesEngine {
     switch (template.frequency) {
       case 'annual':
       case 'one_time': {
-        if (!template.dueMonth || !template.dueDay) return [];
-        const due = applyOffset(new Date(taxYear, template.dueMonth - 1, template.dueDay));
+        // Backward-compat: some older UIs stored dueMonth as 0-11 instead of 1-12.
+        // Treat 0-11 as Jan-Dec, and 1-12 as Jan-Dec.
+        const rawMonth = template.dueMonth;
+        const rawDay = template.dueDay;
+        if (rawMonth === null || rawMonth === undefined || rawDay === null || rawDay === undefined) return [];
+        const month1to12 = rawMonth >= 0 && rawMonth <= 11 ? rawMonth + 1 : rawMonth;
+        if (month1to12 < 1 || month1to12 > 12 || rawDay < 1 || rawDay > 31) return [];
+        const due = applyOffset(new Date(taxYear, month1to12 - 1, rawDay));
         entries.push({ dueDate: due, periodStart: yearStart, periodEnd: yearEnd });
         return entries;
       }
@@ -249,7 +255,9 @@ export class TaxRulesEngine {
     taxYear: number,
   ): Array<{
     key: string;
+    templateKey: string;
     title: string;
+    description: string;
     frequency: string;
     dueDate?: Date;
     computedDueDateForYear?: Date;
@@ -259,7 +267,9 @@ export class TaxRulesEngine {
   }> {
     const applicable: Array<{
       key: string;
+      templateKey: string;
       title: string;
+      description: string;
       frequency: string;
       dueDate?: Date;
       computedDueDateForYear?: Date;
@@ -288,7 +298,9 @@ export class TaxRulesEngine {
               : '';
         applicable.push({
           key: `${template.key}${suffix}`,
+          templateKey: template.key,
           title: template.title,
+          description: template.description,
           frequency: template.frequency,
           dueDate: entry.dueDate,
           computedDueDateForYear: entry.dueDate,
