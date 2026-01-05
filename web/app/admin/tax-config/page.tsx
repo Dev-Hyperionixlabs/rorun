@@ -47,8 +47,18 @@ function validateDeadlineTemplate(input: {
   dueDayOfMonth: string;
   dueMonth: string;
   dueDay: string;
+  offsetDays: string;
 }) {
   const freq = input.frequency;
+  if (input.offsetDays && input.offsetDays.trim() !== "") {
+    const n = Number(input.offsetDays);
+    if (!Number.isFinite(n) || !Number.isInteger(n)) {
+      return "offsetDays must be an integer (e.g. -2, 0, 10).";
+    }
+    if (Math.abs(n) > 3650) {
+      return "offsetDays is too large. Use a value within ±3650 days.";
+    }
+  }
   if (freq === "monthly" || freq === "quarterly") {
     const d = clampInt(input.dueDayOfMonth, 1, 31);
     if (!d) return "For monthly/quarterly templates, dueDayOfMonth is required (1–31).";
@@ -754,19 +764,21 @@ export default function TaxConfigPage() {
                             </div>
                           </div>
                           <div className="space-y-1">
-                            <label className="text-xs font-medium text-slate-700">offsetDays</label>
+                            <label className="text-xs font-medium text-slate-700">
+                              offsetDays{" "}
+                              <span
+                                className="inline-flex align-middle text-slate-500"
+                                title="Adds N days after the computed base date. Example: 5 means 5 days after dueDayOfMonth (monthly) or dueMonth+dueDay (annual). Negative values are allowed."
+                              >
+                                <Info className="h-3.5 w-3.5" />
+                              </span>
+                            </label>
                             <div className="flex items-center gap-2">
                               <Input
                                 value={newTemplate.offsetDays}
                                 onChange={(e) => setNewTemplate((s) => ({ ...s, offsetDays: e.target.value }))}
                                 placeholder="e.g. 0"
                               />
-                              <span
-                                className="text-slate-500"
-                                title="offsetDays adds N days after the computed base date (monthly/quarterly base is dueDayOfMonth; annual/one_time base is dueMonth+dueDay)."
-                              >
-                                <Info className="h-4 w-4" />
-                              </span>
                             </div>
                           </div>
                         </div>
@@ -809,7 +821,7 @@ export default function TaxConfigPage() {
                           </div>
                           <div className="space-y-1">
                             <label className="text-xs font-medium text-slate-700">
-                              dueMonth{" "}
+                              dueMonth (Jan–Dec){" "}
                               <span
                                 className="inline-flex align-middle text-slate-500"
                                 title="Used for annual/one_time templates. Stored as 1–12 (Jan=1)."
@@ -824,7 +836,15 @@ export default function TaxConfigPage() {
                             />
                           </div>
                           <div className="space-y-1">
-                            <label className="text-xs font-medium text-slate-700">dueDay</label>
+                            <label className="text-xs font-medium text-slate-700">
+                              dueDay{" "}
+                              <span
+                                className="inline-flex align-middle text-slate-500"
+                                title="Used for annual/one_time templates. Day of month (1–31)."
+                              >
+                                <Info className="h-3.5 w-3.5" />
+                              </span>
+                            </label>
                             <Input value={newTemplate.dueDay} onChange={(e) => setNewTemplate((s) => ({ ...s, dueDay: e.target.value }))} placeholder="e.g. 31" />
                           </div>
                           <div className="space-y-1" />
@@ -845,7 +865,7 @@ export default function TaxConfigPage() {
                           <Button
                             size="sm"
                             onClick={async () => {
-                              const validationError = validateDeadlineTemplate(newTemplate);
+                              const validationError = validateDeadlineTemplate(newTemplate as any);
                               if (validationError) return setError(validationError);
                               const aw = safeParseJson(newTemplate.appliesWhenJson);
                               if (!aw.ok) return setError(`AppliesWhen JSON: ${aw.error}`);
