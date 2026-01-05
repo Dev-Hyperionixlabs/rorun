@@ -8,6 +8,7 @@ export type InvoicePdfInput = {
     name: string;
     invoiceDisplayName?: string | null;
     invoiceLogoUrl?: string | null;
+    invoiceLogoBuffer?: Buffer | null;
     invoiceAddressLine1?: string | null;
     invoiceAddressLine2?: string | null;
     invoiceCity?: string | null;
@@ -107,8 +108,12 @@ export async function renderInvoicePdf(input: InvoicePdfInput): Promise<Buffer> 
     doc.restore();
   }
 
-  const logoUrl = input.business.invoiceLogoUrl || '';
-  const logoBuf = logoUrl ? await fetchLogo(logoUrl) : null;
+  const logoBuf =
+    input.business.invoiceLogoBuffer && input.business.invoiceLogoBuffer.length > 0
+      ? input.business.invoiceLogoBuffer
+      : input.business.invoiceLogoUrl
+        ? await fetchLogo(input.business.invoiceLogoUrl)
+        : null;
   const headerTop = doc.y;
 
   if (logoBuf) {

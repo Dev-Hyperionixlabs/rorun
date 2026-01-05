@@ -595,18 +595,19 @@ function WorkspaceSettingsSection() {
     setLoadingStoredLogo(true);
     try {
       const base = API_BASE.replace(/\/+$/, "");
-      const res = await fetch(`${base}/businesses/${business.id}/invoice-logo-url`, {
+      const res = await fetch(`${base}/businesses/${business.id}/invoice-logo`, {
         headers: { ...authHeaders() },
         credentials: "include",
       });
       if (!res.ok) throw new Error("Could not load stored logo.");
-      const data = (await res.json()) as { url: string | null };
-      if (!data.url) {
+      const blob = await res.blob();
+      if (!blob || blob.size === 0) {
         addToast({ title: "No stored logo", description: "Upload a logo first, then save invoice settings.", variant: "info" as any });
         setLogoPreviewUrl(null);
         return;
       }
-      setLogoPreviewUrl(data.url);
+      const url = URL.createObjectURL(blob);
+      setLogoPreviewUrl(url);
     } catch (e: any) {
       addToast({ title: "Couldn’t preview logo", description: e?.message || "Please try again.", variant: "error" });
     } finally {

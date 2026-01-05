@@ -1,16 +1,21 @@
-import { Controller, Get, Post, Put, Body, Param, UseGuards, Request, UseInterceptors, UploadedFile } from '@nestjs/common';
+import { Controller, Get, Post, Put, Body, Param, UseGuards, Request, UseInterceptors, UploadedFile, Res, NotFoundException } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiBearerAuth, ApiParam } from '@nestjs/swagger';
 import { BusinessesService } from './businesses.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { CreateBusinessDto, UpdateBusinessDto } from './dto/business.dto';
 import { FileInterceptor } from '@nestjs/platform-express';
+import { StorageService } from '../storage/storage.service';
+import { Response } from 'express';
 
 @ApiTags('businesses')
 @Controller('businesses')
 @UseGuards(JwtAuthGuard)
 @ApiBearerAuth()
 export class BusinessesController {
-  constructor(private readonly businessesService: BusinessesService) {}
+  constructor(
+    private readonly businessesService: BusinessesService,
+    private readonly storageService: StorageService,
+  ) {}
 
   @Post()
   @ApiOperation({ summary: 'Create a new business' })
@@ -66,5 +71,23 @@ export class BusinessesController {
   @ApiOperation({ summary: 'Resolve invoice logo URL (signed if stored as storage key)' })
   async getInvoiceLogoUrl(@Param('id') id: string, @Request() req) {
     return this.businessesService.getResolvedInvoiceLogoUrl(id, req.user.id);
+  }
+
+  @Get(':id/invoice-logo')
+  @ApiParam({ name: 'id', description: 'Business ID' })
+  @ApiOperation({ summary: 'Fetch invoice logo bytes (authenticated, CORS-safe)' })
+  async getInvoiceLogo(@Param('id') id: string, @Request() req, @Res() res: Response) {
+    const business: any = await this.businessesService.findOne(id, req.user.id);
+    const stored = (business?.invoiceLogoUrl || '').toString().trim();
+    if (!stored || !stored.startsWith('businesses/')) {
+      throw new NotFoundException('Invoice logo not found');
+    }
+    const obj = await this.storageService.getObjectBuffer(stored);
+    if (!obj.buffer || obj.buffer.length === 0) {
+      throw new NotFoundException('Invoice logo not found');
+    }
+    res.setHeader('Content-Type', obj.contentType || 'image/png');
+    res.setHeader('Cache-Control', 'no-store');
+    res.status(200).send(obj.buffer);
   }
 }

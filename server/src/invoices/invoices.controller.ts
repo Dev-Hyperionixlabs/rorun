@@ -61,15 +61,18 @@ export class InvoicesController {
     const safeTemplate =
       templateKey === 'modern' || templateKey === 'minimal' || templateKey === 'classic' ? templateKey : 'classic';
 
-    // Resolve logo URL: if stored as a storage key, sign it for fetch.
+    // Prefer reading logo bytes from storage directly (more reliable than signed-URL fetch).
+    let logoBuffer: Buffer | null = null;
     let resolvedLogoUrl: string | null = (business.invoiceLogoUrl || null) as any;
     try {
       if (resolvedLogoUrl && typeof resolvedLogoUrl === 'string' && resolvedLogoUrl.startsWith('businesses/')) {
-        resolvedLogoUrl = await this.storageService.getSignedDownloadUrl(resolvedLogoUrl, 600);
+        const obj = await this.storageService.getObjectBuffer(resolvedLogoUrl);
+        logoBuffer = obj.buffer?.length ? obj.buffer : null;
+        resolvedLogoUrl = null;
       }
     } catch {
       // ignore; pdf generation will proceed without a logo
-      resolvedLogoUrl = null;
+      logoBuffer = null;
     }
 
     let buf: Buffer;
@@ -80,6 +83,7 @@ export class InvoicesController {
           name: business.name,
           invoiceDisplayName: business.invoiceDisplayName,
           invoiceLogoUrl: resolvedLogoUrl,
+          invoiceLogoBuffer: logoBuffer,
           invoiceAddressLine1: business.invoiceAddressLine1,
           invoiceAddressLine2: business.invoiceAddressLine2,
           invoiceCity: business.invoiceCity,

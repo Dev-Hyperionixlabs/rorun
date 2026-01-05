@@ -108,4 +108,16 @@ export class StorageService {
 
     return key;
   }
+
+  async getObjectBuffer(key: string): Promise<{ buffer: Buffer; contentType?: string }> {
+    const res = await this.s3
+      .getObject({
+        Bucket: this.bucket,
+        Key: key,
+      })
+      .promise();
+    const body = res.Body;
+    const buffer = !body ? Buffer.alloc(0) : Buffer.isBuffer(body) ? body : Buffer.from(body as any);
+    return { buffer, contentType: res.ContentType };
+  }
 }
