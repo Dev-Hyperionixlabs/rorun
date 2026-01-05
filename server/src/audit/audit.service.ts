@@ -18,11 +18,20 @@ export class AuditService {
 
   async createAuditEvent(input: CreateAuditEventInput) {
     const { metaJson, ...data } = input;
+
+    // Normalize potentially-non-string header values (e.g. Express can supply string[]).
+    const normalize = (v: any): string | null => {
+      if (v === undefined || v === null) return null;
+      if (Array.isArray(v)) return v.length ? String(v[0]) : null;
+      return String(v);
+    };
     
     return this.prisma.auditEvent.create({
       data: {
         ...data,
         businessId: data.businessId ?? null,
+        ip: normalize((data as any).ip),
+        userAgent: normalize((data as any).userAgent),
         metaJson: metaJson ? metaJson : undefined,
       },
     });

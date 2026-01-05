@@ -114,9 +114,12 @@ export default function TaskDetailPage() {
       });
       await loadTask();
     } catch (error: any) {
+      const requestId = error?.data?.requestId || error?.data?.requestID || error?.data?.request_id;
       addToast({
         title: "Action failed",
-        description: error?.message || "Please try again later.",
+        description:
+          (error?.message || "Please try again later.") +
+          (requestId ? ` (requestId: ${requestId})` : ""),
         variant: "error",
       });
     } finally {

@@ -398,7 +398,9 @@ export const MockApiProvider: React.FC<{ children: React.ReactNode }> = ({ child
       },
       async addDocument(file, relatedTransactionId) {
         if (!businessId) throw new ApiError(400, "No business selected");
-        const doc = await uploadDocument(businessId, file, relatedTransactionId);
+        // Prefer server-side upload to avoid browser->storage CORS preflight failures in production.
+        const { uploadDocumentServerFirst } = await import("./api/documents");
+        const doc = await uploadDocumentServerFirst(businessId, file, relatedTransactionId);
         setState((s) => ({ ...s, documents: [doc, ...s.documents] }));
         return doc;
       },
