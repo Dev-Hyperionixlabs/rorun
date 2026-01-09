@@ -123,8 +123,36 @@ export class ImportsService {
       return batch;
     }
 
-    // If already has lines, return them
+    // If already has lines, normally return them — BUT if they look clearly wrong (e.g. 2000/2001),
+    // re-run normalization/repair/dedupe once so the UI doesn't get stuck with bad years.
     if (batch.lines.length > 0) {
+      const total = batch.lines.length;
+      const implausible = batch.lines.filter((l) => {
+        const y = l.date?.getFullYear?.() ?? 0;
+        return y > 0 && y <= 2005;
+      }).length;
+      const ratio = total > 0 ? implausible / total : 0;
+      if (ratio >= 0.2) {
+        const asParsed: Array<{
+          date: Date;
+          description: string;
+          amount: number;
+          direction: 'credit' | 'debit';
+          confidence: number;
+        }> = batch.lines.map((l) => ({
+          date: l.date,
+          description: l.description || '',
+          amount: Number(l.amount),
+          direction: l.direction === 'credit' ? 'credit' : 'debit',
+          confidence: Number(l.aiConfidence ?? 0.6),
+        }));
+        await this.createBatchLines(batchId, asParsed, businessId);
+        await this.prisma.importBatch.update({ where: { id: batchId }, data: { status: 'parsed' } }).catch(() => {});
+        return this.prisma.importBatch.findUnique({
+          where: { id: batchId },
+          include: { lines: true, document: true },
+        });
+      }
       return batch;
     }
 
@@ -280,21 +308,38 @@ export class ImportsService {
       throw new BadRequestException('No lines selected for approval');
     }
 
+    const nowYear = new Date().getFullYear();
+    const normalizeDesc = (s: string) => String(s || '').trim().replace(/\s+/g, ' ');
+    const repairDateYear = (date: Date, description: string) => {
+      const y = date.getFullYear();
+      if (y >= 2010 && y <= nowYear + 1) return date;
+      const desc = normalizeDesc(description);
+      const matches = Array.from(desc.matchAll(/\b(20\d{2})\b/g)).map((m) => Number(m[1]));
+      const candidate = matches.find((yy) => yy >= 2010 && yy <= nowYear + 1) || null;
+      const repairedYear = candidate ?? nowYear;
+      return new Date(repairedYear, date.getMonth(), date.getDate());
+    };
+
     // Create transactions from selected lines with deduplication
     const createdTransactions = [];
     let skippedCount = 0;
 
     for (const line of selectedLines) {
+      const effectiveDate = repairDateYear(line.date, line.description || '');
+      if (effectiveDate.getFullYear() <= 2005) {
+        throw new BadRequestException({
+          code: 'IMPORT_BAD_DATES',
+          message:
+            'Some statement lines have implausible years (e.g., 2001). Please re-parse the statement or re-upload a clearer statement before importing.',
+        });
+      }
       // Generate fingerprint for dedup
-      const normalizedDesc = (line.description || '')
-        .toLowerCase()
-        .trim()
-        .replace(/\s+/g, ' ');
-      const dateISO = line.date.toISOString().split('T')[0];
+      const normalizedDescLower = normalizeDesc(line.description || '').toLowerCase();
+      const dateISO = effectiveDate.toISOString().split('T')[0];
       const fingerprint = crypto
         .createHash('sha256')
         .update(
-          `${businessId}|import|${batchId}|${dateISO}|${line.amount}|${normalizedDesc}`,
+          `${businessId}|import|${batchId}|${dateISO}|${line.amount}|${normalizedDescLower}`,
         )
         .digest('hex');
 
@@ -321,7 +366,7 @@ export class ImportsService {
             type: line.direction === 'credit' ? 'income' : 'expense',
             amount: line.amount,
             currency: 'NGN',
-            date: line.date,
+            date: effectiveDate,
             description: line.description || 'Imported transaction',
             source: 'import',
             importFingerprint: fingerprint,

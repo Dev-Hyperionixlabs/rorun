@@ -26,6 +26,7 @@ export class ComplianceTasksService {
     dueDate?: Date;
     evidenceRequired?: boolean;
     evidenceSpecJson?: any;
+    evidenceLinks?: any[];
   }): Array<'start' | 'complete' | 'dismiss' | 'add_evidence'> {
     const supportsEvidence = Boolean(
       task.evidenceRequired ||
@@ -34,7 +35,13 @@ export class ComplianceTasksService {
 
     const status = this.normalizeTaskStatus(task.status, task.dueDate);
     if (status === 'open' || status === 'overdue') {
-      return ['start', 'complete', 'dismiss'];
+      // If evidence is required and missing, do not offer "complete" yet (completion is evidence-gated).
+      try {
+        this.ensureEvidenceSatisfied(task);
+        return ['start', 'complete', 'dismiss'];
+      } catch {
+        return ['start', 'dismiss', 'add_evidence'];
+      }
     }
     if (status === 'in_progress') {
       return supportsEvidence ? ['complete', 'dismiss', 'add_evidence'] : ['complete', 'dismiss'];
