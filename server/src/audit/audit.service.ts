@@ -26,15 +26,28 @@ export class AuditService {
       return String(v);
     };
     
-    return this.prisma.auditEvent.create({
-      data: {
-        ...data,
-        businessId: data.businessId ?? null,
-        ip: normalize((data as any).ip),
-        userAgent: normalize((data as any).userAgent),
-        metaJson: metaJson ? metaJson : undefined,
-      },
-    });
+    try {
+      return await this.prisma.auditEvent.create({
+        data: {
+          ...data,
+          businessId: data.businessId ?? null,
+          ip: normalize((data as any).ip),
+          userAgent: normalize((data as any).userAgent),
+          metaJson: metaJson ? metaJson : undefined,
+        },
+      });
+    } catch (e: any) {
+      // Best-effort: audit logging must NEVER break user flows.
+      // eslint-disable-next-line no-console
+      console.warn('[AuditService] Failed to write audit event:', {
+        action: input?.action,
+        entityType: input?.entityType,
+        entityId: input?.entityId,
+        businessId: input?.businessId,
+        message: e?.message,
+      });
+      return null as any;
+    }
   }
 
   async getAuditEvents(businessId: string, filters?: {

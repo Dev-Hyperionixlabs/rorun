@@ -3,6 +3,7 @@ import {
   NotFoundException,
   ForbiddenException,
   BadRequestException,
+  ConflictException,
 } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { BusinessesService } from '../businesses/businesses.service';
@@ -118,15 +119,21 @@ export class ComplianceTasksService {
   async startTask(taskId: string, businessId: string, userId: string, ip?: string, userAgent?: string) {
     const task = await this.findOne(taskId, businessId, userId);
 
+    // Idempotent: starting an already in-progress task returns 200.
+    if (task.status === 'in_progress') return task;
+    // Invalid transitions become 409 (state-machine guard).
     if (task.status !== 'open' && task.status !== 'overdue') {
-      throw new BadRequestException('Task cannot be started from current status');
+      throw new ConflictException({ code: 'TASK_INVALID_TRANSITION', message: 'Task cannot be started from current status' });
     }
 
     const updated = await this.prisma.complianceTask.update({
       where: { id: taskId },
-      data: {
-        status: 'in_progress',
-        updatedAt: new Date(),
+      data: { status: 'in_progress', updatedAt: new Date() },
+      include: {
+        evidenceLinks: {
+          include: { document: { select: { id: true, type: true, storageUrl: true, mimeType: true, size: true, createdAt: true } } },
+          orderBy: { createdAt: 'desc' },
+        },
       },
     });
 
@@ -147,16 +154,20 @@ export class ComplianceTasksService {
   async completeTask(taskId: string, businessId: string, userId: string, ip?: string, userAgent?: string) {
     const task = await this.findOne(taskId, businessId, userId);
 
-    if (task.status === 'done' || task.status === 'dismissed') {
-      throw new BadRequestException('Task is already completed or dismissed');
+    // Idempotent: completing an already completed task returns 200.
+    if (task.status === 'done') return task;
+    if (task.status === 'dismissed') {
+      throw new ConflictException({ code: 'TASK_INVALID_TRANSITION', message: 'Cannot complete a dismissed task' });
     }
 
     const updated = await this.prisma.complianceTask.update({
       where: { id: taskId },
-      data: {
-        status: 'done',
-        completedAt: new Date(),
-        updatedAt: new Date(),
+      data: { status: 'done', completedAt: new Date(), updatedAt: new Date() },
+      include: {
+        evidenceLinks: {
+          include: { document: { select: { id: true, type: true, storageUrl: true, mimeType: true, size: true, createdAt: true } } },
+          orderBy: { createdAt: 'desc' },
+        },
       },
     });
 
@@ -177,16 +188,20 @@ export class ComplianceTasksService {
   async dismissTask(taskId: string, businessId: string, userId: string, ip?: string, userAgent?: string) {
     const task = await this.findOne(taskId, businessId, userId);
 
+    // Idempotent: dismissing an already dismissed task returns 200.
+    if (task.status === 'dismissed') return task;
     if (task.status === 'done') {
-      throw new BadRequestException('Cannot dismiss a completed task');
+      throw new ConflictException({ code: 'TASK_INVALID_TRANSITION', message: 'Cannot dismiss a completed task' });
     }
 
     const updated = await this.prisma.complianceTask.update({
       where: { id: taskId },
-      data: {
-        status: 'dismissed',
-        dismissedAt: new Date(),
-        updatedAt: new Date(),
+      data: { status: 'dismissed', dismissedAt: new Date(), updatedAt: new Date() },
+      include: {
+        evidenceLinks: {
+          include: { document: { select: { id: true, type: true, storageUrl: true, mimeType: true, size: true, createdAt: true } } },
+          orderBy: { createdAt: 'desc' },
+        },
       },
     });
 
@@ -226,6 +241,24 @@ export class ComplianceTasksService {
     if (document.businessId !== businessId) {
       throw new ForbiddenException('Document does not belong to this business');
     }
+
+    // Idempotent: if already linked, return existing link.
+    const existing = await this.prisma.taskEvidenceLink.findFirst({
+      where: { taskId, documentId: dto.documentId },
+      include: {
+        document: {
+          select: {
+            id: true,
+            type: true,
+            storageUrl: true,
+            mimeType: true,
+            size: true,
+            createdAt: true,
+          },
+        },
+      },
+    });
+    if (existing) return existing;
 
     const link = await this.prisma.taskEvidenceLink.create({
       data: {
