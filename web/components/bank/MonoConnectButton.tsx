@@ -5,7 +5,6 @@ import { Button } from "@/components/ui/button";
 import { api } from "@/lib/api/bank";
 import { useToast } from "@/components/ui/toast";
 import { Loader2, Link2 } from "lucide-react";
-import { api as http } from "@/lib/api/client";
 
 interface MonoConnectButtonProps {
   businessId: string;
@@ -120,10 +119,11 @@ export function MonoConnectButton({
       setConsentTextVersion(config.consentTextVersion);
       setShowConsentModal(true);
     } catch (error: any) {
+      const requestId = error?.data?.requestId || error?.data?.requestID || error?.data?.request_id;
       const message = error?.message || "Failed to initialize bank connection";
       addToast({
         title: "Error",
-        description: message,
+        description: `${message}${requestId ? ` (requestId: ${requestId})` : ""}`,
         variant: "error",
       });
       await api
@@ -153,27 +153,18 @@ export function MonoConnectButton({
     setConnecting(true);
 
     try {
-      // Optional geo guard (configurable). Default allows non-NG to attempt connect.
-      let countryCode: string | null = null;
-      try {
-        const geo = await http.get<{ countryCode: string | null; isNG: boolean | null }>(`/geo`, {
-          skipAuth: true,
-          timeoutMs: 6000,
-        });
-        countryCode = geo?.countryCode || null;
-        if (!allowNonNg && geo?.isNG === false) {
-          await api
-            .logConnectAttempt(businessId, {
-              provider: "mono",
-              success: false,
-              reason: "GEO_BLOCK",
-              countryCode: countryCode || undefined,
-            })
-            .catch(() => {});
-          throw new Error("Bank connect is not available in your region. Please use Upload statement.");
-        }
-      } catch {
-        // Best-effort only: do not block on geo failures.
+      // We intentionally do NOT call /geo here (keeps bank connect independent of geo infra and honors "no geo-blocking").
+      const countryCode: string | null = null;
+      if (!allowNonNg) {
+        await api
+          .logConnectAttempt(businessId, {
+            provider: "mono",
+            success: false,
+            reason: "BANK_CONNECT_DISABLED_BY_CONFIG",
+            countryCode: countryCode || undefined,
+          })
+          .catch(() => {});
+        throw new Error("Bank connect is disabled by configuration. Please use Upload statement.");
       }
 
       try {
@@ -256,10 +247,11 @@ export function MonoConnectButton({
             });
             onSuccess?.();
           } catch (error: any) {
+            const requestId = error?.data?.requestId || error?.data?.requestID || error?.data?.request_id;
             const message = error?.message || "Failed to connect bank account";
             addToast({
               title: "Connection failed",
-              description: message,
+              description: `${message}${requestId ? ` (requestId: ${requestId})` : ""}`,
               variant: "error",
             });
             await api
@@ -298,10 +290,11 @@ export function MonoConnectButton({
       try { monoInstance.open?.(); } catch {}
       try { monoInstance.show?.(); } catch {}
     } catch (error: any) {
+      const requestId = error?.data?.requestId || error?.data?.requestID || error?.data?.request_id;
       const message = error?.message || "Failed to initialize bank connection";
       addToast({
         title: "Error",
-        description: message,
+        description: `${message}${requestId ? ` (requestId: ${requestId})` : ""}`,
         variant: "error",
       });
       onError?.(message);
