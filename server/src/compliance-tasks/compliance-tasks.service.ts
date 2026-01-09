@@ -23,6 +23,7 @@ export class ComplianceTasksService {
 
   private computeAllowedActions(task: {
     status: string;
+    dueDate?: Date;
     evidenceRequired?: boolean;
     evidenceSpecJson?: any;
   }): Array<'start' | 'complete' | 'dismiss' | 'add_evidence'> {
@@ -31,13 +32,88 @@ export class ComplianceTasksService {
         (task.evidenceSpecJson && typeof task.evidenceSpecJson === 'object' && Object.keys(task.evidenceSpecJson).length > 0),
     );
 
-    if (task.status === 'open' || task.status === 'overdue') {
+    const status = this.normalizeTaskStatus(task.status, task.dueDate);
+    if (status === 'open' || status === 'overdue') {
       return ['start', 'complete', 'dismiss'];
     }
-    if (task.status === 'in_progress') {
+    if (status === 'in_progress') {
       return supportsEvidence ? ['complete', 'dismiss', 'add_evidence'] : ['complete', 'dismiss'];
     }
     return [];
+  }
+
+  private normalizeTaskStatus(statusRaw: any, dueDate?: Date): 'open' | 'overdue' | 'in_progress' | 'done' | 'dismissed' {
+    const s = String(statusRaw ?? '').trim().toLowerCase();
+    const known = ['open', 'overdue', 'in_progress', 'done', 'dismissed'];
+    if (known.includes(s)) return s as any;
+
+    // Guard against bad legacy data: infer only for "empty/unknown"
+    const due = dueDate instanceof Date && !Number.isNaN(dueDate.getTime()) ? dueDate : null;
+    if (!s || s === 'unknown' || s === 'pending' || s === 'todo') {
+      const inferred = due && due.getTime() < Date.now() ? 'overdue' : 'open';
+      // eslint-disable-next-line no-console
+      console.warn(
+        JSON.stringify({
+          level: 'warn',
+          kind: 'ComplianceTaskStatusNormalized',
+          from: s || '(empty)',
+          to: inferred,
+          dueDate: due ? due.toISOString() : null,
+          timestamp: new Date().toISOString(),
+        }),
+      );
+      return inferred;
+    }
+
+    // Default conservative: treat as open-ish unless overdue by date.
+    const inferred = due && due.getTime() < Date.now() ? 'overdue' : 'open';
+    // eslint-disable-next-line no-console
+    console.warn(
+      JSON.stringify({
+        level: 'warn',
+        kind: 'ComplianceTaskStatusNormalized',
+        from: s,
+        to: inferred,
+        dueDate: due ? due.toISOString() : null,
+        timestamp: new Date().toISOString(),
+      }),
+    );
+    return inferred;
+  }
+
+  private ensureEvidenceSatisfied(task: any) {
+    const requiredTypes: string[] = Array.isArray(task?.evidenceSpecJson?.requiredTypes)
+      ? task.evidenceSpecJson.requiredTypes
+      : [];
+    if (!requiredTypes.length) return;
+
+    const normalizedRequired = requiredTypes
+      .map((t) => String(t ?? '').trim().toLowerCase())
+      .filter(Boolean);
+    if (!normalizedRequired.length) return;
+
+    const docs = Array.isArray(task?.evidenceLinks)
+      ? task.evidenceLinks.map((l: any) => l?.document).filter(Boolean)
+      : [];
+    const docTypes = new Set(docs.map((d: any) => String(d?.type ?? '').trim().toLowerCase()).filter(Boolean));
+
+    // Known evidence types we can strictly validate today.
+    const knownMappable = new Set(['receipt', 'bank_statement']);
+    const strictRequired = normalizedRequired.filter((t) => knownMappable.has(t));
+    const unknownRequired = normalizedRequired.filter((t) => !knownMappable.has(t));
+
+    const missingStrict = strictRequired.filter((t) => !docTypes.has(t));
+    const hasAnyEvidence = docs.length > 0;
+
+    if (missingStrict.length > 0 || (unknownRequired.length > 0 && !hasAnyEvidence)) {
+      throw new BadRequestException({
+        code: 'TASK_EVIDENCE_REQUIRED',
+        message:
+          missingStrict.length > 0
+            ? `Attach required evidence before completing this task: ${missingStrict.join(', ')}`
+            : 'Attach required evidence before completing this task.',
+      });
+    }
   }
 
   private withAllowedActions<T extends { status: string; evidenceRequired?: boolean; evidenceSpecJson?: any }>(
@@ -149,10 +225,17 @@ export class ComplianceTasksService {
   async startTask(taskId: string, businessId: string, userId: string, ip?: string, userAgent?: string) {
     const task = await this.findOne(taskId, businessId, userId);
 
+    const status = this.normalizeTaskStatus(task.status, task.dueDate);
     // Idempotent: starting an already in-progress task returns 200.
-    if (task.status === 'in_progress') return task;
+    if (status === 'in_progress') return task;
+    if (status === 'done') {
+      throw new ConflictException({ code: 'TASK_ALREADY_DONE', message: 'Task already completed' });
+    }
+    if (status === 'dismissed') {
+      throw new ConflictException({ code: 'TASK_DISMISSED', message: 'Task is dismissed' });
+    }
     // Invalid transitions become 409 (state-machine guard).
-    if (task.status !== 'open' && task.status !== 'overdue') {
+    if (status !== 'open' && status !== 'overdue') {
       throw new ConflictException({ code: 'TASK_INVALID_TRANSITION', message: 'Task cannot be started from current status' });
     }
 
@@ -173,7 +256,7 @@ export class ComplianceTasksService {
       action: 'task.start',
       entityType: 'ComplianceTask',
       entityId: taskId,
-      metaJson: { previousStatus: task.status },
+      metaJson: { previousStatus: task.status, previousStatusNormalized: status },
       ip,
       userAgent,
     });
@@ -184,11 +267,14 @@ export class ComplianceTasksService {
   async completeTask(taskId: string, businessId: string, userId: string, ip?: string, userAgent?: string) {
     const task = await this.findOne(taskId, businessId, userId);
 
+    const status = this.normalizeTaskStatus(task.status, task.dueDate);
     // Idempotent: completing an already completed task returns 200.
-    if (task.status === 'done') return task;
-    if (task.status === 'dismissed') {
+    if (status === 'done') return task;
+    if (status === 'dismissed') {
       throw new ConflictException({ code: 'TASK_INVALID_TRANSITION', message: 'Cannot complete a dismissed task' });
     }
+    // Evidence-gating: if required, completion needs evidence attached.
+    this.ensureEvidenceSatisfied(task);
 
     const updated = await this.prisma.complianceTask.update({
       where: { id: taskId },
@@ -207,7 +293,7 @@ export class ComplianceTasksService {
       action: 'task.complete',
       entityType: 'ComplianceTask',
       entityId: taskId,
-      metaJson: { previousStatus: task.status },
+      metaJson: { previousStatus: task.status, previousStatusNormalized: status },
       ip,
       userAgent,
     });
@@ -218,9 +304,10 @@ export class ComplianceTasksService {
   async dismissTask(taskId: string, businessId: string, userId: string, ip?: string, userAgent?: string) {
     const task = await this.findOne(taskId, businessId, userId);
 
+    const status = this.normalizeTaskStatus(task.status, task.dueDate);
     // Idempotent: dismissing an already dismissed task returns 200.
-    if (task.status === 'dismissed') return task;
-    if (task.status === 'done') {
+    if (status === 'dismissed') return task;
+    if (status === 'done') {
       throw new ConflictException({ code: 'TASK_INVALID_TRANSITION', message: 'Cannot dismiss a completed task' });
     }
 
@@ -241,7 +328,7 @@ export class ComplianceTasksService {
       action: 'task.dismiss',
       entityType: 'ComplianceTask',
       entityId: taskId,
-      metaJson: { previousStatus: task.status },
+      metaJson: { previousStatus: task.status, previousStatusNormalized: status },
       ip,
       userAgent,
     });
@@ -259,17 +346,16 @@ export class ComplianceTasksService {
   ) {
     const task = await this.findOne(taskId, businessId, userId);
 
-    // Verify document belongs to business
-    const document = await this.prisma.document.findUnique({
-      where: { id: dto.documentId },
+    // Verify document belongs to business (avoid leaking existence of other businesses' docs)
+    const document = await this.prisma.document.findFirst({
+      where: { id: dto.documentId, businessId },
+      select: { id: true },
     });
-
     if (!document) {
-      throw new NotFoundException('Document not found');
-    }
-
-    if (document.businessId !== businessId) {
-      throw new ForbiddenException('Document does not belong to this business');
+      throw new BadRequestException({
+        code: 'TASK_EVIDENCE_INVALID_DOCUMENT',
+        message: 'Invalid document for this business',
+      });
     }
 
     // Idempotent: if already linked, return existing link.

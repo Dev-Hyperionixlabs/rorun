@@ -455,14 +455,51 @@ export class ImportsService {
     parsedLines: Array<{ date: Date; description: string; amount: number; direction: 'credit' | 'debit'; confidence: number }>,
     businessId: string,
   ) {
+    const nowYear = new Date().getFullYear();
+    const normalizeDesc = (s: string) => String(s || '').trim().replace(/\s+/g, ' ');
+    const tryRepairYear = (line: { date: Date; description: string; amount: number; direction: 'credit' | 'debit'; confidence: number }) => {
+      const y = line.date.getFullYear();
+      if (y >= 2010 && y <= nowYear + 1) return line;
+
+      const desc = normalizeDesc(line.description);
+      const matches = Array.from(desc.matchAll(/\b(20\d{2})\b/g)).map((m) => Number(m[1]));
+      const candidate = matches.find((yy) => yy >= 2010 && yy <= nowYear + 1) || null;
+
+      const repairedYear = candidate ?? nowYear;
+      const repaired = new Date(repairedYear, line.date.getMonth(), line.date.getDate());
+      // Reduce confidence if we had to repair
+      return { ...line, date: repaired, confidence: Math.max(0.3, line.confidence - 0.2) };
+    };
+
+    // Normalize, repair implausible years, and dedupe by stable signature.
+    const dedupedMap = new Map<
+      string,
+      { date: Date; description: string; amount: number; direction: 'credit' | 'debit'; confidence: number }
+    >();
+    for (const raw of parsedLines || []) {
+      if (!raw?.date || Number.isNaN(new Date(raw.date).getTime())) continue;
+      if (!raw?.amount || raw.amount <= 0) continue;
+      const cleaned = tryRepairYear({
+        ...raw,
+        description: normalizeDesc(raw.description),
+      });
+      const dateISO = cleaned.date.toISOString().slice(0, 10);
+      const sig = `${dateISO}|${cleaned.direction}|${cleaned.amount}|${normalizeDesc(cleaned.description).toLowerCase()}`;
+      const existing = dedupedMap.get(sig);
+      if (!existing || (cleaned.confidence ?? 0) > (existing.confidence ?? 0)) {
+        dedupedMap.set(sig, cleaned);
+      }
+    }
+    const cleanedLines = Array.from(dedupedMap.values());
+
     // Get categories for suggestions (global list)
     const categories = await this.prisma.transactionCategory.findMany({});
     await this.prisma.importBatchLine.deleteMany({ where: { importBatchId: batchId } }).catch(() => {});
     await this.prisma.importBatchLine.createMany({
-      data: parsedLines.slice(0, 2000).map((line) => ({
+      data: cleanedLines.slice(0, 2000).map((line) => ({
         importBatchId: batchId,
         date: line.date,
-        description: line.description,
+        description: normalizeDesc(line.description),
         amount: line.amount,
         direction: line.direction,
         suggestedCategoryId: this.suggestCategory(line.description, categories),

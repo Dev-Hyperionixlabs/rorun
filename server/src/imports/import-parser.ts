@@ -166,6 +166,22 @@ function parseCsvRow(row: string): string[] {
 function parseDate(dateStr: string): Date | null {
   if (!dateStr) return null;
 
+  const buildDate = (year: number, month1to12: number, day1to31: number): Date | null => {
+    if (!Number.isFinite(year) || !Number.isFinite(month1to12) || !Number.isFinite(day1to31)) return null;
+    if (month1to12 < 1 || month1to12 > 12) return null;
+    if (day1to31 < 1 || day1to31 > 31) return null;
+    const d = new Date(year, month1to12 - 1, day1to31);
+    // Reject JS overflow (e.g., month=25 becomes a "valid" date)
+    if (
+      d.getFullYear() !== year ||
+      d.getMonth() !== month1to12 - 1 ||
+      d.getDate() !== day1to31
+    ) {
+      return null;
+    }
+    return Number.isNaN(d.getTime()) ? null : d;
+  };
+
   // Try common formats
   const formats = [
     /(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{2,4})/, // DD/MM/YYYY or DD-MM-YYYY
@@ -180,28 +196,30 @@ function parseDate(dateStr: string): Date | null {
       if (match[1].length === 4) {
         // YYYY-MM-DD
         year = parseInt(match[1]);
-        month = parseInt(match[2]) - 1;
-        day = parseInt(match[3]);
+        const m = parseInt(match[2]);
+        const d = parseInt(match[3]);
+        const built = buildDate(year, m, d);
+        if (built) return built;
       } else {
-        // DD/MM/YYYY
-        day = parseInt(match[1]);
-        month = parseInt(match[2]) - 1;
+        // DD/MM/YYYY or MM/DD/YYYY (ambiguous) — try both, reject overflows.
+        const a = parseInt(match[1]); // day OR month
+        const b = parseInt(match[2]); // month OR day
         year = parseInt(match[3]);
         if (year < 100) year += 2000;
-      }
+        const asDDMM = buildDate(year, b, a);
+        const asMMDD = buildDate(year, a, b);
 
-      const date = new Date(year, month, day);
-      if (!isNaN(date.getTime())) {
-        return date;
+        // Prefer the interpretation that is valid; if both are valid, default to DD/MM (NG)
+        if (asDDMM && !asMMDD) return asDDMM;
+        if (asMMDD && !asDDMM) return asMMDD;
+        if (asDDMM && asMMDD) return asDDMM;
       }
     }
   }
 
   // Try native Date parsing
-  const date = new Date(dateStr);
-  if (!isNaN(date.getTime())) {
-    return date;
-  }
+  const native = new Date(dateStr);
+  if (!isNaN(native.getTime())) return native;
 
   return null;
 }
