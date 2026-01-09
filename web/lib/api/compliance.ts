@@ -26,6 +26,7 @@ export interface ComplianceTask {
   createdAt: string;
   updatedAt: string;
   evidenceLinks?: TaskEvidenceLink[];
+  allowedActions?: Array<"start" | "complete" | "dismiss" | "add_evidence">;
 }
 
 export interface TaskEvidenceLink {

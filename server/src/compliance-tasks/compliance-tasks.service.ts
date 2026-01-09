@@ -10,6 +10,7 @@ import { BusinessesService } from '../businesses/businesses.service';
 import { AuditService } from '../audit/audit.service';
 import { ComplianceTasksGenerator } from './compliance-tasks.generator';
 import { TaskQueryDto, AddEvidenceDto } from './dto/compliance-task.dto';
+import { Prisma } from '@prisma/client';
 
 @Injectable()
 export class ComplianceTasksService {
@@ -19,6 +20,34 @@ export class ComplianceTasksService {
     private auditService: AuditService,
     private generator: ComplianceTasksGenerator,
   ) {}
+
+  private computeAllowedActions(task: {
+    status: string;
+    evidenceRequired?: boolean;
+    evidenceSpecJson?: any;
+  }): Array<'start' | 'complete' | 'dismiss' | 'add_evidence'> {
+    const supportsEvidence = Boolean(
+      task.evidenceRequired ||
+        (task.evidenceSpecJson && typeof task.evidenceSpecJson === 'object' && Object.keys(task.evidenceSpecJson).length > 0),
+    );
+
+    if (task.status === 'open' || task.status === 'overdue') {
+      return ['start', 'complete', 'dismiss'];
+    }
+    if (task.status === 'in_progress') {
+      return supportsEvidence ? ['complete', 'dismiss', 'add_evidence'] : ['complete', 'dismiss'];
+    }
+    return [];
+  }
+
+  private withAllowedActions<T extends { status: string; evidenceRequired?: boolean; evidenceSpecJson?: any }>(
+    task: T,
+  ): T & { allowedActions: Array<'start' | 'complete' | 'dismiss' | 'add_evidence'> } {
+    return {
+      ...(task as any),
+      allowedActions: this.computeAllowedActions(task),
+    };
+  }
 
   async findAll(businessId: string, userId: string, query: TaskQueryDto) {
     await this.businessesService.findOne(businessId, userId);
@@ -67,7 +96,7 @@ export class ComplianceTasksService {
     });
 
     // Sort manually to ensure overdue/open come first
-    return tasks.sort((a, b) => {
+    const sorted = tasks.sort((a, b) => {
       const statusOrder: Record<string, number> = {
         overdue: 0,
         open: 1,
@@ -79,6 +108,7 @@ export class ComplianceTasksService {
       if (statusDiff !== 0) return statusDiff;
       return a.dueDate.getTime() - b.dueDate.getTime();
     });
+    return sorted.map((t) => this.withAllowedActions(t));
   }
 
   async findOne(taskId: string, businessId: string, userId: string) {
@@ -113,7 +143,7 @@ export class ComplianceTasksService {
       throw new ForbiddenException('Task does not belong to this business');
     }
 
-    return task;
+    return this.withAllowedActions(task);
   }
 
   async startTask(taskId: string, businessId: string, userId: string, ip?: string, userAgent?: string) {
@@ -148,7 +178,7 @@ export class ComplianceTasksService {
       userAgent,
     });
 
-    return updated;
+    return this.withAllowedActions(updated);
   }
 
   async completeTask(taskId: string, businessId: string, userId: string, ip?: string, userAgent?: string) {
@@ -182,7 +212,7 @@ export class ComplianceTasksService {
       userAgent,
     });
 
-    return updated;
+    return this.withAllowedActions(updated);
   }
 
   async dismissTask(taskId: string, businessId: string, userId: string, ip?: string, userAgent?: string) {
@@ -216,7 +246,7 @@ export class ComplianceTasksService {
       userAgent,
     });
 
-    return updated;
+    return this.withAllowedActions(updated);
   }
 
   async addEvidence(
@@ -260,25 +290,50 @@ export class ComplianceTasksService {
     });
     if (existing) return existing;
 
-    const link = await this.prisma.taskEvidenceLink.create({
-      data: {
-        taskId,
-        documentId: dto.documentId,
-        note: dto.note || null,
-      },
-      include: {
-        document: {
-          select: {
-            id: true,
-            type: true,
-            storageUrl: true,
-            mimeType: true,
-            size: true,
-            createdAt: true,
+    let link;
+    try {
+      link = await this.prisma.taskEvidenceLink.create({
+        data: {
+          taskId,
+          documentId: dto.documentId,
+          note: dto.note || null,
+        },
+        include: {
+          document: {
+            select: {
+              id: true,
+              type: true,
+              storageUrl: true,
+              mimeType: true,
+              size: true,
+              createdAt: true,
+            },
           },
         },
-      },
-    });
+      });
+    } catch (e: any) {
+      // If two requests race, the unique constraint makes this deterministic.
+      if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === 'P2002') {
+        const again = await this.prisma.taskEvidenceLink.findFirst({
+          where: { taskId, documentId: dto.documentId },
+          include: {
+            document: {
+              select: {
+                id: true,
+                type: true,
+                storageUrl: true,
+                mimeType: true,
+                size: true,
+                createdAt: true,
+              },
+            },
+          },
+        });
+        if (again) return again;
+        throw new ConflictException('Evidence already attached');
+      }
+      throw e;
+    }
 
     await this.auditService.createAuditEvent({
       businessId,

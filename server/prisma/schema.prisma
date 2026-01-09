@@ -813,6 +813,7 @@ model TaskEvidenceLink {
 
   @@index([taskId])
   @@index([documentId])
+  @@unique([taskId, documentId])
   @@map("task_evidence_links")
 }
 

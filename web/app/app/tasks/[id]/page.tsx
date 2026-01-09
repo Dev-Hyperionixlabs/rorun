@@ -122,6 +122,8 @@ export default function TaskDetailPage() {
           (requestId ? ` (requestId: ${requestId})` : ""),
         variant: "error",
       });
+      // Always refetch after failures so the UI self-heals from stale state.
+      await loadTask();
     } finally {
       setActionLoading(null);
     }
@@ -140,11 +142,15 @@ export default function TaskDetailPage() {
       setSelectedDocumentId("");
       await loadTask();
     } catch (error: any) {
+      const requestId = error?.data?.requestId || error?.data?.requestID || error?.data?.request_id;
       addToast({
         title: "Failed to add evidence",
-        description: error?.message || "Please try again later.",
+        description:
+          (error?.message || "Please try again later.") +
+          (requestId ? ` (requestId: ${requestId})` : ""),
         variant: "error",
       });
+      await loadTask();
     }
   };
 
@@ -159,11 +165,15 @@ export default function TaskDetailPage() {
       });
       await loadTask();
     } catch (error: any) {
+      const requestId = error?.data?.requestId || error?.data?.requestID || error?.data?.request_id;
       addToast({
         title: "Failed to remove evidence",
-        description: error?.message || "Please try again later.",
+        description:
+          (error?.message || "Please try again later.") +
+          (requestId ? ` (requestId: ${requestId})` : ""),
         variant: "error",
       });
+      await loadTask();
     }
   };
 
@@ -250,6 +260,14 @@ export default function TaskDetailPage() {
 
   const badge = getStatusBadge(task.status);
   const Icon = badge.icon;
+  const allowed = new Set(
+    task.allowedActions ||
+      (task.status === "in_progress"
+        ? (["complete", "dismiss", task.evidenceRequired ? "add_evidence" : null].filter(Boolean) as any)
+        : task.status === "open" || task.status === "overdue"
+          ? (["start", "complete", "dismiss"] as any)
+          : [])
+  );
 
   return (
     <div className="space-y-4">
@@ -296,7 +314,7 @@ export default function TaskDetailPage() {
               )}
             </div>
             <div className="ml-4 flex flex-col gap-2">
-              {task.status === "open" || task.status === "overdue" ? (
+              {allowed.has("start") ? (
                 <Button
                   size="sm"
                   variant={task.status === "overdue" ? "danger" : "primary"}
@@ -309,7 +327,8 @@ export default function TaskDetailPage() {
                     "Start"
                   )}
                 </Button>
-              ) : task.status === "in_progress" ? (
+              ) : null}
+              {allowed.has("complete") ? (
                 <Button
                   size="sm"
                   variant="primary"
@@ -323,7 +342,7 @@ export default function TaskDetailPage() {
                   )}
                 </Button>
               ) : null}
-              {task.status !== "done" && task.status !== "dismissed" && (
+              {allowed.has("dismiss") && (
                 <Button
                   size="sm"
                   variant="ghost"
@@ -354,6 +373,7 @@ export default function TaskDetailPage() {
                 size="sm"
                 variant="secondary"
                 onClick={() => setShowEvidenceModal(true)}
+                disabled={!allowed.has("add_evidence")}
               >
                 <Paperclip className="mr-1.5 h-3 w-3" />
                 Attach document
