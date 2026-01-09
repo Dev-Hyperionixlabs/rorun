@@ -18,7 +18,7 @@ describe('FeedbackService', () => {
     }).compile();
 
     const svc = moduleRef.get(FeedbackService);
-    const res = await svc.create({ message: 'Hello feedback', email: 'a@b.com' });
+    const res = await svc.create({ message: 'Hello feedback', userEmail: 'a@b.com' });
     expect(res.id).toBe('fb1');
     expect(prismaMock.feedback.create).toHaveBeenCalled();
   });

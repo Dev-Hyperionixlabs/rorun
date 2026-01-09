@@ -1,4 +1,4 @@
-import { IsString, IsOptional, IsEnum } from 'class-validator';
+import { ArrayNotEmpty, IsArray, IsEnum, IsOptional, IsString, IsUUID } from 'class-validator';
 import { ApiProperty } from '@nestjs/swagger';
 
 export class CreateImportDto {
@@ -19,6 +19,9 @@ export class CreateImportDto {
 
 export class ApproveImportDto {
   @ApiProperty({ type: [String] })
+  @IsArray()
+  @ArrayNotEmpty()
+  @IsUUID('4', { each: true })
   lineIds: string[];
 }
 
