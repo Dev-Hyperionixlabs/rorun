@@ -26,6 +26,25 @@ export interface TaxSafetyScore {
   };
   deductions?: Array<{ code: string; points: number; reason: string; howToFix: string; href?: string }>;
   nextActions?: Array<{ title: string; href?: string }>;
+  scoreBreakdownV2?: {
+    totalScore: number;
+    totalMax: 100;
+    components: Array<{
+      key: string;
+      label: string;
+      points: number;
+      maxPoints: number;
+      description?: string;
+      howToImprove?: string;
+      href?: string;
+    }>;
+    flags?: Array<{
+      key: string;
+      label: string;
+      severity: "info" | "warn" | "critical";
+      deltaPoints?: number;
+    }>;
+  };
 }
 
 export interface FirsReadyStatus {

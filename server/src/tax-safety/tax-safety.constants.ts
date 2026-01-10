@@ -32,6 +32,37 @@ export interface TaxSafetyScore {
   band: TaxSafetyBand;
   reasons: TaxSafetyReasonCode[];
   breakdown: TaxSafetyScoreBreakdown;
+  /**
+   * V2 contract for UI consistency:
+   * - totalMax is always 100
+   * - sum(components.maxPoints) == totalMax
+   * - sum(components.points) == totalScore
+   */
+  scoreBreakdownV2?: {
+    totalScore: number;
+    totalMax: 100;
+    components: Array<{
+      key:
+        | 'tax_profile'
+        | 'records_coverage'
+        | 'receipts'
+        | 'deadlines'
+        | 'overdue'
+        | 'filing_pack';
+      label: string;
+      points: number;
+      maxPoints: number;
+      description?: string;
+      howToImprove?: string;
+      href?: string;
+    }>;
+    flags?: Array<{
+      key: string;
+      label: string;
+      severity: 'info' | 'warn' | 'critical';
+      deltaPoints?: number;
+    }>;
+  };
   breakdownPoints?: {
     taxProfile: { earned: number; max: number };
     recordsCoverage: { earned: number; max: number };

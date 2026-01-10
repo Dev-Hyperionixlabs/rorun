@@ -16,6 +16,21 @@ class TestableTaxSafetyService extends TaxSafetyService {
 describe('TaxSafetyService scoring', () => {
   const service = new TestableTaxSafetyService();
 
+  function assertV2Invariants(result: TaxSafetyScore) {
+    expect(result.scoreBreakdownV2).toBeTruthy();
+    const v2 = result.scoreBreakdownV2!;
+    expect(v2.totalMax).toBe(100);
+    const sumMax = v2.components.reduce((acc, c) => acc + c.maxPoints, 0);
+    const sumPts = v2.components.reduce((acc, c) => acc + c.points, 0);
+    expect(sumMax).toBe(100);
+    expect(sumPts).toBe(result.score);
+    for (const c of v2.components) {
+      expect(c.points).toBeGreaterThanOrEqual(0);
+      expect(c.maxPoints).toBeGreaterThanOrEqual(0);
+      expect(c.points).toBeLessThanOrEqual(c.maxPoints);
+    }
+  }
+
   it('returns high score when everything is good', () => {
     const metrics = {
       hasCurrentTaxProfile: true,
@@ -32,6 +47,7 @@ describe('TaxSafetyService scoring', () => {
     expect(result.score).toBe(TAX_SAFETY_MAX_SCORE);
     expect(result.band).toBe('high');
     expect(result.reasons).toHaveLength(0);
+    assertV2Invariants(result);
   });
 
   it('penalises missing eligibility and overdue obligations', () => {
@@ -56,6 +72,26 @@ describe('TaxSafetyService scoring', () => {
     expect(result.reasons).toContain('LOW_RECEIPT_COVERAGE');
     expect(result.reasons).toContain('OVERDUE_OBLIGATION');
     expect(result.reasons).toContain('MISSING_FILING_PACK');
+    assertV2Invariants(result);
+  });
+
+  it('makes 81 explainable (components sum to 81, max sums to 100)', () => {
+    // This mirrors the historical "receipts not scored yet" normalization case:
+    // taxProfile 10/10, records 30/30, deadlines 5/10, overdue 20/20, filingPack 0/10 => 65/80
+    // receipts are estimated to keep max at 100: round(20*(65/80)) = 16 => total 81
+    const metrics = {
+      hasCurrentTaxProfile: true,
+      monthsElapsedInYear: 6,
+      monthsWithAnyTransactions: 6,
+      expenseTxCount: 0, // receipts not directly scored
+      expenseWithDocumentCount: 0,
+      hasOverdueObligation: false,
+      daysUntilNextDeadline: null, // half-credit deadlines
+      hasFilingPack: false,
+    };
+    const result = service.compute('biz-1', 2026, metrics);
+    expect(result.score).toBe(81);
+    assertV2Invariants(result);
   });
 
   it('clamps score between 0 and 100', () => {
@@ -73,5 +109,6 @@ describe('TaxSafetyService scoring', () => {
     const result = service.compute('biz-1', 2025, metrics);
     expect(result.score).toBeGreaterThanOrEqual(0);
     expect(result.score).toBeLessThanOrEqual(100);
+    assertV2Invariants(result);
   });
 });

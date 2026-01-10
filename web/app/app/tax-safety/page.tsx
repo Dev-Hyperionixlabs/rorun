@@ -226,7 +226,56 @@ export default function TaxSafetyDetailPage() {
         </CardContent>
       </Card>
 
-      {score.breakdownPoints && (
+      {score.scoreBreakdownV2 ? (
+        <details className="rounded-lg border border-slate-200 bg-white p-4">
+          <summary className="cursor-pointer text-sm font-semibold text-slate-900">
+            How your score is calculated
+          </summary>
+          <div className="mt-3 space-y-2 text-xs">
+            {score.scoreBreakdownV2.components.map((c) => (
+              <div key={c.key} className="rounded-md bg-slate-50 px-3 py-2">
+                <div className="flex items-center justify-between gap-3">
+                  <span className="font-semibold text-slate-700">{c.label}</span>
+                  <span className="text-slate-600">
+                    {Math.round(c.points)}/{Math.round(c.maxPoints)}
+                  </span>
+                </div>
+                {c.description ? (
+                  <p className="mt-1 text-[11px] text-slate-500">{c.description}</p>
+                ) : null}
+              </div>
+            ))}
+          </div>
+
+          <div className="mt-4">
+            <p className="text-xs font-semibold text-slate-800">Ways to increase your score</p>
+            <div className="mt-2 space-y-2 text-xs">
+              {score.scoreBreakdownV2.components
+                .filter((c) => c.howToImprove)
+                .slice(0, 6)
+                .map((c) => (
+                  <div key={c.key} className="rounded-md border border-slate-200 bg-white px-3 py-2">
+                    <div className="flex items-center justify-between gap-2">
+                      <p className="font-semibold text-slate-800">{c.label}</p>
+                      <span className="text-slate-600">
+                        {Math.round(c.points)}/{Math.round(c.maxPoints)}
+                      </span>
+                    </div>
+                    <p className="mt-1 text-slate-600">{c.howToImprove}</p>
+                    {c.href ? (
+                      <div className="mt-2">
+                        <Button size="sm" variant="secondary" onClick={() => router.push(c.href!)}>
+                          Open
+                        </Button>
+                      </div>
+                    ) : null}
+                  </div>
+                ))}
+            </div>
+          </div>
+        </details>
+      ) : score.breakdownPoints ? (
+        // Back-compat fallback (older server versions)
         <details className="rounded-lg border border-slate-200 bg-white p-4">
           <summary className="cursor-pointer text-sm font-semibold text-slate-900">
             How your score is calculated
@@ -248,46 +297,8 @@ export default function TaxSafetyDetailPage() {
               </div>
             ))}
           </div>
-
-          {score.deductions && score.deductions.length > 0 && (
-            <div className="mt-4">
-              <p className="text-xs font-semibold text-slate-800">Deductions</p>
-              <div className="mt-2 space-y-2 text-xs">
-                {score.deductions.slice(0, 6).map((d, idx) => (
-                  <div key={`${d.code}-${idx}`} className="rounded-md border border-slate-200 bg-white px-3 py-2">
-                    <div className="flex items-center justify-between gap-2">
-                      <p className="font-semibold text-slate-800">{d.reason}</p>
-                      <span className="text-slate-600">-{d.points}</span>
-                    </div>
-                    <p className="mt-1 text-slate-600">{d.howToFix}</p>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {score.nextActions && score.nextActions.length > 0 && (
-            <div className="mt-4">
-              <p className="text-xs font-semibold text-slate-800">Do this next</p>
-              <div className="mt-2 space-y-2 text-xs">
-                {score.nextActions.slice(0, 5).map((a, idx) => (
-                  <div
-                    key={`${a.title}-${idx}`}
-                    className="flex items-center justify-between rounded-md bg-slate-50 px-3 py-2"
-                  >
-                    <span className="text-slate-700">{a.title}</span>
-                    {a.href ? (
-                      <Button size="sm" variant="secondary" onClick={() => router.push(a.href!)}>
-                        Open
-                      </Button>
-                    ) : null}
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
         </details>
-      )}
+      ) : null}
 
       <Card>
         <CardHeader>

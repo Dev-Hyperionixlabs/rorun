@@ -157,12 +157,12 @@ export class TaxSafetyService {
         metrics.expenseWithDocumentCount / Math.max(1, metrics.expenseTxCount);
     }
 
-    // Explainable 0..100 scoring model: start at 100 and allocate max points per category.
+    // V2 scoring contract: max always sums to 100 and earned sums to the final score.
     const MAX = TAX_SAFETY_MAX_SCORE;
     const points = {
       taxProfile: { max: 10, earned: 0 },
       recordsCoverage: { max: 30, earned: 0 },
-      receipts: { max: metrics.expenseTxCount >= 5 ? 20 : 0, earned: 0 },
+      receipts: { max: 20, earned: 0 }, // never 0/0 in v2
       deadlines: { max: 10, earned: 0 },
       overdue: { max: 20, earned: 0 },
       filingPack: { max: 10, earned: 0 },
@@ -179,14 +179,7 @@ export class TaxSafetyService {
     if (recordsCoverageRatio < 0.5) reasons.push('LOW_RECORDS_COVERAGE');
     else if (recordsCoverageRatio < 0.75) reasons.push('MEDIUM_RECORDS_COVERAGE');
 
-    // 3) Receipts: only score when we have enough expenses to evaluate.
-    if (points.receipts.max > 0 && receiptCoverageRatio !== null) {
-      points.receipts.earned = Math.round(
-        Math.max(0, Math.min(1, receiptCoverageRatio)) * points.receipts.max,
-      );
-      if (receiptCoverageRatio < 0.5) reasons.push('LOW_RECEIPT_COVERAGE');
-      else if (receiptCoverageRatio < 0.8) reasons.push('MEDIUM_RECEIPT_COVERAGE');
-    }
+    const flags: Array<{ key: string; label: string; severity: 'info' | 'warn' | 'critical'; deltaPoints?: number }> = [];
 
     // 4) Deadlines: penalize overdue; otherwise small penalty as deadlines approach.
     if (metrics.hasOverdueObligation) {
@@ -214,7 +207,39 @@ export class TaxSafetyService {
     points.filingPack.earned = metrics.hasFilingPack ? points.filingPack.max : 0;
     if (!metrics.hasFilingPack) reasons.push('MISSING_FILING_PACK');
 
-    const sumEarned =
+    // 3) Receipts (computed after other buckets so estimates reflect the same "overall completeness" scaling):
+    // - If we have enough expenses (>=5), score directly from coverage ratio.
+    // - Otherwise, estimate receipts points proportionally from the other earned points.
+    //   This keeps totalMax=100 and makes scores like 81 mathematically explainable.
+    if (metrics.expenseTxCount >= 5 && receiptCoverageRatio !== null) {
+      points.receipts.earned = Math.round(
+        Math.max(0, Math.min(1, receiptCoverageRatio)) * points.receipts.max,
+      );
+      if (receiptCoverageRatio < 0.5) reasons.push('LOW_RECEIPT_COVERAGE');
+      else if (receiptCoverageRatio < 0.8) reasons.push('MEDIUM_RECEIPT_COVERAGE');
+    } else {
+      const earnedNoReceipts =
+        points.taxProfile.earned +
+        points.recordsCoverage.earned +
+        points.deadlines.earned +
+        points.overdue.earned +
+        points.filingPack.earned;
+      const maxNoReceipts =
+        points.taxProfile.max +
+        points.recordsCoverage.max +
+        points.deadlines.max +
+        points.overdue.max +
+        points.filingPack.max;
+      const ratio = earnedNoReceipts / Math.max(1, maxNoReceipts);
+      points.receipts.earned = Math.round(Math.max(0, Math.min(1, ratio)) * points.receipts.max);
+      flags.push({
+        key: 'RECEIPTS_NOT_SCORED_YET',
+        label: 'Receipts score is estimated until you have at least 5 expense transactions.',
+        severity: 'info',
+      });
+    }
+
+    const score =
       points.taxProfile.earned +
       points.recordsCoverage.earned +
       points.receipts.earned +
@@ -222,27 +247,11 @@ export class TaxSafetyService {
       points.overdue.earned +
       points.filingPack.earned;
 
-    // If receipts max is 0 (not enough data), re-normalize by adding the missing max into records coverage.
-    // This keeps MAX at 100 without unfairly penalizing early-stage businesses.
-    const sumMax =
-      points.taxProfile.max +
-      points.recordsCoverage.max +
-      points.receipts.max +
-      points.deadlines.max +
-      points.overdue.max +
-      points.filingPack.max;
-
-    let score = sumEarned;
-    if (sumMax !== MAX) {
-      // Scale to 100
-      score = Math.round((sumEarned / Math.max(1, sumMax)) * MAX);
-    }
-
-    score = Math.min(MAX, Math.max(TAX_SAFETY_MIN_SCORE, score));
+    const clampedScore = Math.min(MAX, Math.max(TAX_SAFETY_MIN_SCORE, score));
 
     let band: 'low' | 'medium' | 'high';
-    if (score < 50) band = 'low';
-    else if (score < 80) band = 'medium';
+    if (clampedScore < 50) band = 'low';
+    else if (clampedScore < 80) band = 'medium';
     else band = 'high';
 
     const breakdown: TaxSafetyScoreBreakdown = {
@@ -331,10 +340,75 @@ export class TaxSafetyService {
     return {
       businessId,
       taxYear,
-      score,
+      score: clampedScore,
       band,
       reasons,
       breakdown,
+      scoreBreakdownV2: {
+        totalScore: clampedScore,
+        totalMax: 100,
+        components: [
+          {
+            key: 'tax_profile',
+            label: 'Tax profile complete',
+            points: points.taxProfile.earned,
+            maxPoints: points.taxProfile.max,
+            howToImprove: points.taxProfile.earned === points.taxProfile.max ? undefined : 'Complete your tax profile for this year',
+            href: '/app/settings?tab=workspace',
+          },
+          {
+            key: 'records_coverage',
+            label: 'Records coverage',
+            points: points.recordsCoverage.earned,
+            maxPoints: points.recordsCoverage.max,
+            description: `You have transactions in ${Math.round(recordsCoverageRatio * 100)}% of months so far this year.`,
+            howToImprove: points.recordsCoverage.earned === points.recordsCoverage.max ? undefined : 'Add transactions for missing months',
+            href: '/app/transactions',
+          },
+          {
+            key: 'receipts',
+            label: 'Receipts',
+            points: points.receipts.earned,
+            maxPoints: points.receipts.max,
+            description:
+              metrics.expenseTxCount >= 5 && receiptCoverageRatio !== null
+                ? `Receipts are attached for about ${Math.round(receiptCoverageRatio * 100)}% of expense transactions.`
+                : 'Not enough expenses yet to score receipts directly. We estimate this part until you have at least 5 expenses.',
+            howToImprove: 'Upload receipts for expense transactions',
+            href: '/app/documents',
+          },
+          {
+            key: 'deadlines',
+            label: 'Deadlines tracked',
+            points: points.deadlines.earned,
+            maxPoints: points.deadlines.max,
+            description:
+              metrics.daysUntilNextDeadline == null
+                ? 'No deadlines captured yet. Add obligations/deadlines to earn full points.'
+                : `Next deadline in ${metrics.daysUntilNextDeadline} days.`,
+            howToImprove: 'Review upcoming deadlines',
+            href: '/app/obligations',
+          },
+          {
+            key: 'overdue',
+            label: 'No overdue filings',
+            points: points.overdue.earned,
+            maxPoints: points.overdue.max,
+            description: metrics.hasOverdueObligation ? 'You have overdue obligations.' : 'No overdue obligations detected.',
+            howToImprove: metrics.hasOverdueObligation ? 'Review and clear overdue obligations' : undefined,
+            href: '/app/obligations?filter=overdue',
+          },
+          {
+            key: 'filing_pack',
+            label: 'Filing pack generated',
+            points: points.filingPack.earned,
+            maxPoints: points.filingPack.max,
+            howToImprove: points.filingPack.earned === points.filingPack.max ? undefined : 'Generate your year-end filing pack',
+            href: '/app/summary',
+          },
+        ],
+        flags,
+      },
       breakdownPoints: points,
       deductions,
       nextActions: orderedActions,
